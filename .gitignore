@@ -1,0 +1,16 @@
+# --- Security (Wajib) ---
+.env
+
+# --- Go System Files ---
+/bin/
+/dist/
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+vendor/
+
+# --- IDE Files ---
+.vscode/
+.idea/
