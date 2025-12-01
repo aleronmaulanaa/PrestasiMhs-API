@@ -1,7 +1,8 @@
 package main
 
 import (
-	"PrestasiMhs-API/config" // Import dari module name Anda
+	"PrestasiMhs-API/config" // Import konfigurasi database
+	"PrestasiMhs-API/routes" // IMPORT BARU: Import package routes agar bisa dipanggil
 	"log"
 	"os"
 
@@ -26,12 +27,11 @@ func main() {
 	// 2. Inisialisasi Database (Postgres & Mongo)
 	config.ConnectDB()
 	
-	// Pastikan koneksi ditutup saat aplikasi berhenti (Optional, tp best practice di main flow)
+	// Pastikan koneksi ditutup saat aplikasi berhenti
 	defer func() {
 		if config.DB != nil {
 			config.DB.Close()
 		}
-		// MongoDB client disconnect bisa ditambahkan disini jika client di-export
 	}()
 
 	// 3. Setup Fiber Framework
@@ -44,19 +44,20 @@ func main() {
 	app.Use(logger.New()) // Logging request
 	app.Use(cors.New())   // Handle CORS untuk Frontend nanti
 
-	// 5. Setup Routes Dasar
-	api := app.Group("/api/v1")
+	// 5. Setup Routes
+	// Panggil fungsi SetupRoutes dari folder routes/setup.go
+	// Ini akan mendaftarkan /api/v1/auth/login dan route lainnya secara otomatis
+	routes.SetupRoutes(app)
 	
-	// Health Check Endpoint
-	api.Get("/health", func(c *fiber.Ctx) error {
+	// Health Check Endpoint (Manual)
+	// Kita taruh manual disini untuk memudahkan pengecekan server
+	app.Get("/api/v1/health", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{
-			"status":  "success",
-			"message": "Server is running smoothly! 🚀",
+			"status":    "success",
+			"message":   "Server is running smoothly! 🚀",
 			"db_status": "connected",
 		})
 	})
-
-	// TODO: Register route lain disini (User, Auth, Achievements) nanti
 
 	// 6. Start Server
 	port := os.Getenv("APP_PORT")

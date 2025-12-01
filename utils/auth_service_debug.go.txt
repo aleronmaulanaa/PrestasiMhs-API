@@ -1,0 +1,108 @@
+package services
+
+import (
+	"PrestasiMhs-API/app/models"
+	"PrestasiMhs-API/app/repositories"
+	"PrestasiMhs-API/utils"
+	"fmt" // Tambahan untuk Debug
+
+	"github.com/gofiber/fiber/v2"
+	"golang.org/x/crypto/bcrypt" // Tambahan untuk Generator Darurat
+)
+
+type AuthService interface {
+	Login(c *fiber.Ctx) error
+}
+
+type authService struct {
+	repo repositories.AuthRepository
+}
+
+func NewAuthService(repo repositories.AuthRepository) AuthService {
+	return &authService{
+		repo: repo,
+	}
+}
+
+func (s *authService) Login(c *fiber.Ctx) error {
+	var req models.LoginRequest
+
+	// 1. Parsing Data
+	if err := c.BodyParser(&req); err != nil {
+		fmt.Println("❌ DEBUG: Gagal Parsing Body:", err) // Debug Log
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Format input tidak valid",
+		})
+	}
+
+	// [DEBUG START] Cek Input
+	fmt.Printf("\n--- [DEBUG START] ---\n")
+	fmt.Printf("1. Input Username: '%s'\n", req.Username)
+	fmt.Printf("   Input Password: '%s'\n", req.Password)
+	fmt.Printf("   Bytes Input Pwd: %v\n", []byte(req.Password))
+
+	// 2. Logic Layer: Cari User
+	user, err := s.repo.FindByUsername(req.Username)
+	if err != nil {
+		fmt.Println("❌ DEBUG: User tidak ditemukan di Database:", err) // Debug Log
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Username atau password salah",
+		})
+	}
+
+	// [DEBUG] Cek Data DB
+	fmt.Printf("2. Hash di DB: '%s'\n", user.PasswordHash)
+	fmt.Printf("   Bytes Hash: %v\n", []byte(user.PasswordHash))
+
+	// 3. Logic Layer: Cek Password
+	// Menggunakan utils.CheckPassword yang sama persis dengan versi bersih
+	match := utils.CheckPassword(req.Password, user.PasswordHash)
+	
+	if !match {
+		fmt.Println("❌ DEBUG: Password Hash TIDAK COCOK!") // Debug Log
+
+		// --- [GENERATOR DARURAT] ---
+		// Kode ini membuat hash valid dari input user untuk dicopy ke DB
+		newHash, _ := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+		fmt.Println("\n⚠️  GENERATOR DARURAT (Solusi):")
+		fmt.Println("Copy hash di bawah ini dan Update ke tabel users di pgAdmin:")
+		fmt.Printf("%s\n", string(newHash))
+		fmt.Println("-----------------------")
+		// ---------------------------
+
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Username atau password salah",
+		})
+	}
+
+	fmt.Println("✅ DEBUG: Password Cocok! Login Sukses.") // Debug Log
+
+	// 4. Logic Layer: Generate Token
+	token, err := utils.GenerateToken(user.ID, user.RoleName)
+	if err != nil {
+		fmt.Println("❌ DEBUG: Gagal generate token:", err) // Debug Log
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal membuat token session",
+		})
+	}
+
+	// 5. Susun Response menggunakan Struct (Identik dengan versi bersih)
+	response := models.LoginResponse{
+		Token: token,
+	}
+	response.User.ID = user.ID
+	response.User.Username = user.Username
+	response.User.FullName = user.FullName
+	response.User.Role = user.RoleName
+
+	// 6. Return JSON
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"status":  "success",
+		"message": "Login berhasil",
+		"data":    response,
+	})
+}

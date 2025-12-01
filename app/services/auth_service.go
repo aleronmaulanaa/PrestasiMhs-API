@@ -1,14 +1,95 @@
+// package services
+
+// import (
+// 	"PrestasiMhs-API/app/models"
+// 	"PrestasiMhs-API/app/repositories"
+// 	"PrestasiMhs-API/utils"
+// 	"github.com/gofiber/fiber/v2" // Service sekarang butuh Fiber karena menghandle Context
+// )
+
+// type AuthService interface {
+// 	Login(c *fiber.Ctx) error // Parameter berubah menjadi fiber.Ctx
+// }
+
+// type authService struct {
+// 	repo repositories.AuthRepository
+// }
+
+// func NewAuthService(repo repositories.AuthRepository) AuthService {
+// 	return &authService{
+// 		repo: repo,
+// 	}
+// }
+
+// // Login sekarang menangani Parsing Data DAN Logic sekaligus
+// func (s *authService) Login(c *fiber.Ctx) error {
+// 	var req models.LoginRequest
+
+// 	// 1. Parsing Data
+// 	if err := c.BodyParser(&req); err != nil {
+// 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+// 			"status":  "error",
+// 			"message": "Format input tidak valid",
+// 		})
+// 	}
+
+// 	// 2. Logic Layer: Cari User
+// 	user, err := s.repo.FindByUsername(req.Username)
+// 	if err != nil {
+// 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+// 			"status":  "error",
+// 			"message": "Username atau password salah",
+// 		})
+// 	}
+
+// 	// 3. Logic Layer: Cek Password
+// 	if !utils.CheckPassword(req.Password, user.PasswordHash) {
+// 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+// 			"status":  "error",
+// 			"message": "Username atau password salah",
+// 		})
+// 	}
+
+// 	// 4. Logic Layer: Generate Token
+// 	token, err := utils.GenerateToken(user.ID, user.RoleName)
+// 	if err != nil {
+// 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+// 			"status":  "error",
+// 			"message": "Gagal membuat token session",
+// 		})
+// 	}
+
+// 	// 5. Susun Response menggunakan Struct (BEST PRACTICE)
+// 	// Kita inisialisasi struct LoginResponse di sini
+// 	response := models.LoginResponse{
+// 		Token: token,
+// 	}
+	
+// 	// Isi data user
+// 	response.User.ID = user.ID
+// 	response.User.Username = user.Username
+// 	response.User.FullName = user.FullName
+// 	response.User.Role = user.RoleName
+
+// 	// 6. Return JSON
+// 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+// 		"status":  "success",
+// 		"message": "Login berhasil",
+// 		"data":    response, // Menggunakan struct, bukan map manual
+// 	})
+// }
+
 package services
 
 import (
 	"PrestasiMhs-API/app/models"
 	"PrestasiMhs-API/app/repositories"
 	"PrestasiMhs-API/utils"
-	"errors"
+	"github.com/gofiber/fiber/v2"
 )
 
 type AuthService interface {
-	Login(req models.LoginRequest) (*models.LoginResponse, error)
+	Login(c *fiber.Ctx) error
 }
 
 type authService struct {
@@ -21,35 +102,55 @@ func NewAuthService(repo repositories.AuthRepository) AuthService {
 	}
 }
 
-func (s *authService) Login(req models.LoginRequest) (*models.LoginResponse, error) {
-	// 1. Cari user berdasarkan username di database
+func (s *authService) Login(c *fiber.Ctx) error {
+	var req models.LoginRequest
+
+	// 1. Parsing Data
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Format input tidak valid",
+		})
+	}
+
+	// 2. Logic Layer: Cari User
 	user, err := s.repo.FindByUsername(req.Username)
 	if err != nil {
-		return nil, errors.New("username atau password salah") // Pesan error umum agar aman
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Username atau password salah",
+		})
 	}
 
-	// 2. Cek apakah password cocok dengan hash di database
-	// Menggunakan utils yang sudah kita buat di Step 1
+	// 3. Logic Layer: Cek Password
 	if !utils.CheckPassword(req.Password, user.PasswordHash) {
-		return nil, errors.New("username atau password salah")
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Username atau password salah",
+		})
 	}
 
-	// 3. Generate JWT Token
-	// Menggunakan utils yang sudah kita buat di Step 1
+	// 4. Logic Layer: Generate Token
 	token, err := utils.GenerateToken(user.ID, user.RoleName)
 	if err != nil {
-		return nil, errors.New("gagal membuat token session")
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal membuat token session",
+		})
 	}
 
-	// 4. Susun response
-	response := &models.LoginResponse{
+	// 5. Susun Response menggunakan Struct
+	response := models.LoginResponse{
 		Token: token,
 	}
-	// Isi data user di response (tanpa password)
 	response.User.ID = user.ID
 	response.User.Username = user.Username
 	response.User.FullName = user.FullName
 	response.User.Role = user.RoleName
 
-	return response, nil
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"status":  "success",
+		"message": "Login berhasil",
+		"data":    response,
+	})
 }
