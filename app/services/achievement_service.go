@@ -30,8 +30,7 @@
 // 	// 1. Ambil User ID dari Token (Middleware)
 // 	userID := c.Locals("user_id").(uuid.UUID).String()
 
-// 	// 2. Cari Student ID berdasarkan User ID
-// 	// Karena di tabel achievements butuh student_id, bukan user_id
+// 	// 2. Validasi & Ambil Student ID
 // 	studentID, err := s.repo.GetStudentIDByUserID(userID)
 // 	if err != nil {
 // 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
@@ -50,16 +49,17 @@
 // 	}
 
 // 	// 4. Handle File Upload
-// 	file, err := c.FormFile("file") // Nama key di Postman harus "file"
+// 	// Folder ./uploads/documents SUDAH DIJAMIN ADA oleh main.go
+// 	file, err := c.FormFile("file") 
 // 	var attachments []models.Attachment
 
 // 	if err == nil { // Jika ada file yang diupload
-// 		// Generate nama unik agar tidak bentrok
+// 		// Generate nama unik
 // 		ext := filepath.Ext(file.Filename)
 // 		newFileName := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
 // 		filePath := fmt.Sprintf("./uploads/documents/%s", newFileName)
 
-// 		// Simpan file ke folder
+// 		// Simpan file
 // 		if err := c.SaveFile(file, filePath); err != nil {
 // 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 // 				"status":  "error",
@@ -77,7 +77,6 @@
 // 	}
 
 // 	// 5. Mapping ke MongoDB Model
-// 	// Kita konversi input string tanggal ke time.Time
 // 	eventDate, _ := time.Parse("2006-01-02", req.EventDate)
 
 // 	mongoData := &models.AchievementMongo{
@@ -101,7 +100,7 @@
 // 		},
 // 	}
 
-// 	// 6. Simpan ke Database (Repo Hybrid)
+// 	// 6. Simpan ke Database
 // 	if err := s.repo.Create(mongoData, studentID); err != nil {
 // 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 // 			"status":  "error",
@@ -122,8 +121,8 @@ import (
 	"PrestasiMhs-API/app/models"
 	"PrestasiMhs-API/app/repositories"
 	"fmt"
-	"os" // Import OS untuk cek/buat folder
 	"path/filepath"
+	"strings" // Import strings untuk cek ekstensi file
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -149,7 +148,7 @@ func (s *achievementService) CreateAchievement(c *fiber.Ctx) error {
 	// 1. Ambil User ID dari Token (Middleware)
 	userID := c.Locals("user_id").(uuid.UUID).String()
 
-	// 2. Cari Student ID berdasarkan User ID
+	// 2. Validasi & Ambil Student ID
 	studentID, err := s.repo.GetStudentIDByUserID(userID)
 	if err != nil {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
@@ -158,7 +157,7 @@ func (s *achievementService) CreateAchievement(c *fiber.Ctx) error {
 		})
 	}
 
-	// 3. Parsing Form Data
+	// 3. Parsing Form Data (Text Fields)
 	var req models.CreateAchievementRequest
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -172,36 +171,33 @@ func (s *achievementService) CreateAchievement(c *fiber.Ctx) error {
 	var attachments []models.Attachment
 
 	if err == nil { // Jika ada file yang diupload
-		// --- PERBAIKAN DI SINI ---
-		// Tentukan folder tujuan
-		uploadDir := "./uploads/documents"
-
-		// Cek apakah folder ada, jika tidak BUATKAN
-		if _, err := os.Stat(uploadDir); os.IsNotExist(err) {
-			fmt.Println("📂 Folder belum ada, sedang membuat folder:", uploadDir)
-			if err := os.MkdirAll(uploadDir, os.ModePerm); err != nil {
-				fmt.Println("❌ Gagal membuat folder:", err)
-				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-					"status":  "error",
-					"message": "Gagal menyiapkan folder penyimpanan",
-				})
-			}
-		}
-
-		// Generate nama unik
 		ext := filepath.Ext(file.Filename)
 		newFileName := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
-		filePath := fmt.Sprintf("%s/%s", uploadDir, newFileName)
+
+		// --- LOGIKA PEMISAHAN FOLDER ---
+		var subFolder string
+		
+		// Ubah ekstensi ke huruf kecil agar .JPG dan .jpg dianggap sama
+		lowerExt := strings.ToLower(ext)
+
+		switch lowerExt {
+		case ".jpg", ".jpeg", ".png", ".gif", ".webp":
+			subFolder = "photos"
+		default:
+			subFolder = "documents" // Default untuk PDF, DOCX, ZIP, dll
+		}
+
+		// Tentukan path penyimpanan (Folder documents/photos dijamin ada oleh main.go)
+		filePath := fmt.Sprintf("./uploads/%s/%s", subFolder, newFileName)
+		// --------------------------------
 
 		// Simpan file
 		if err := c.SaveFile(file, filePath); err != nil {
-			fmt.Println("❌ Error SaveFile:", err) // Debugging Log
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 				"status":  "error",
-				"message": "Gagal menyimpan file: " + err.Error(),
+				"message": "Gagal menyimpan file",
 			})
 		}
-		// -------------------------
 
 		// Tambahkan ke struct attachment
 		attachments = append(attachments, models.Attachment{
