@@ -5,6 +5,7 @@
 // 	"PrestasiMhs-API/app/repositories"
 // 	"fmt"
 // 	"path/filepath"
+// 	"strings" // Import strings untuk cek ekstensi file
 // 	"time"
 
 // 	"github.com/gofiber/fiber/v2"
@@ -49,15 +50,29 @@
 // 	}
 
 // 	// 4. Handle File Upload
-// 	// Folder ./uploads/documents SUDAH DIJAMIN ADA oleh main.go
 // 	file, err := c.FormFile("file") 
 // 	var attachments []models.Attachment
 
 // 	if err == nil { // Jika ada file yang diupload
-// 		// Generate nama unik
 // 		ext := filepath.Ext(file.Filename)
 // 		newFileName := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
-// 		filePath := fmt.Sprintf("./uploads/documents/%s", newFileName)
+
+// 		// --- LOGIKA PEMISAHAN FOLDER ---
+// 		var subFolder string
+		
+// 		// Ubah ekstensi ke huruf kecil agar .JPG dan .jpg dianggap sama
+// 		lowerExt := strings.ToLower(ext)
+
+// 		switch lowerExt {
+// 		case ".jpg", ".jpeg", ".png", ".gif", ".webp":
+// 			subFolder = "photos"
+// 		default:
+// 			subFolder = "documents" // Default untuk PDF, DOCX, ZIP, dll
+// 		}
+
+// 		// Tentukan path penyimpanan (Folder documents/photos dijamin ada oleh main.go)
+// 		filePath := fmt.Sprintf("./uploads/%s/%s", subFolder, newFileName)
+// 		// --------------------------------
 
 // 		// Simpan file
 // 		if err := c.SaveFile(file, filePath); err != nil {
@@ -122,7 +137,7 @@ import (
 	"PrestasiMhs-API/app/repositories"
 	"fmt"
 	"path/filepath"
-	"strings" // Import strings untuk cek ekstensi file
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -132,6 +147,9 @@ import (
 
 type AchievementService interface {
 	CreateAchievement(c *fiber.Ctx) error
+	GetMyAchievements(c *fiber.Ctx) error      // Untuk Mahasiswa
+	GetAdviseeAchievements(c *fiber.Ctx) error // Untuk Dosen Wali
+	VerifyAchievement(c *fiber.Ctx) error      // Untuk Dosen Wali (Approve/Reject)
 }
 
 type achievementService struct {
@@ -144,8 +162,10 @@ func NewAchievementService(repo repositories.AchievementRepository) AchievementS
 	}
 }
 
+// --- 1. FEATURE: UPLOAD PRESTASI ---
+
 func (s *achievementService) CreateAchievement(c *fiber.Ctx) error {
-	// 1. Ambil User ID dari Token (Middleware)
+	// 1. Ambil User ID dari Token
 	userID := c.Locals("user_id").(uuid.UUID).String()
 
 	// 2. Validasi & Ambil Student ID
@@ -157,7 +177,7 @@ func (s *achievementService) CreateAchievement(c *fiber.Ctx) error {
 		})
 	}
 
-	// 3. Parsing Form Data (Text Fields)
+	// 3. Parsing Form Data
 	var req models.CreateAchievementRequest
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -167,31 +187,25 @@ func (s *achievementService) CreateAchievement(c *fiber.Ctx) error {
 	}
 
 	// 4. Handle File Upload
-	file, err := c.FormFile("file") 
+	file, err := c.FormFile("file")
 	var attachments []models.Attachment
 
-	if err == nil { // Jika ada file yang diupload
+	if err == nil {
 		ext := filepath.Ext(file.Filename)
 		newFileName := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
-
-		// --- LOGIKA PEMISAHAN FOLDER ---
-		var subFolder string
 		
-		// Ubah ekstensi ke huruf kecil agar .JPG dan .jpg dianggap sama
+		// Logika pemisahan folder
+		var subFolder string
 		lowerExt := strings.ToLower(ext)
-
 		switch lowerExt {
 		case ".jpg", ".jpeg", ".png", ".gif", ".webp":
 			subFolder = "photos"
 		default:
-			subFolder = "documents" // Default untuk PDF, DOCX, ZIP, dll
+			subFolder = "documents"
 		}
 
-		// Tentukan path penyimpanan (Folder documents/photos dijamin ada oleh main.go)
 		filePath := fmt.Sprintf("./uploads/%s/%s", subFolder, newFileName)
-		// --------------------------------
 
-		// Simpan file
 		if err := c.SaveFile(file, filePath); err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 				"status":  "error",
@@ -199,7 +213,6 @@ func (s *achievementService) CreateAchievement(c *fiber.Ctx) error {
 			})
 		}
 
-		// Tambahkan ke struct attachment
 		attachments = append(attachments, models.Attachment{
 			FileName:   file.Filename,
 			FileURL:    filePath,
@@ -243,5 +256,126 @@ func (s *achievementService) CreateAchievement(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
 		"status":  "success",
 		"message": "Prestasi berhasil disimpan sebagai draft",
+	})
+}
+
+// --- 2. FEATURE: READ DATA (HYBRID MERGE) ---
+
+// helper untuk menggabungkan data Postgres dan Mongo
+func (s *achievementService) mergeData(refs []models.AchievementReference) ([]models.AchievementReference, error) {
+	if len(refs) == 0 {
+		return refs, nil
+	}
+
+	// Kumpulkan semua Mongo ID dari hasil query Postgres
+	var mongoIDs []string
+	for _, ref := range refs {
+		mongoIDs = append(mongoIDs, ref.MongoAchievementID)
+	}
+
+	// Ambil detail dari MongoDB dalam satu query (Bulk Read)
+	mongoDetails, err := s.repo.FindMongoDetails(mongoIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	// Gabungkan data (Mapping)
+	for i := range refs {
+		if detail, exists := mongoDetails[refs[i].MongoAchievementID]; exists {
+			refs[i].Detail = &detail
+		}
+	}
+
+	return refs, nil
+}
+
+// GetMyAchievements: Mahasiswa melihat prestasi sendiri
+func (s *achievementService) GetMyAchievements(c *fiber.Ctx) error {
+	userID := c.Locals("user_id").(uuid.UUID).String()
+	
+	studentID, err := s.repo.GetStudentIDByUserID(userID)
+	if err != nil {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"status": "error", "message": "Data mahasiswa tidak ditemukan"})
+	}
+
+	// 1. Ambil Referensi dari Postgres
+	refs, err := s.repo.FindAllByStudentID(studentID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"status": "error", "message": err.Error()})
+	}
+
+	// 2. Gabungkan dengan detail Mongo
+	finalData, err := s.mergeData(refs)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"status": "error", "message": "Gagal mengambil detail prestasi"})
+	}
+
+	return c.JSON(fiber.Map{
+		"status": "success",
+		"data":   finalData,
+	})
+}
+
+// GetAdviseeAchievements: Dosen Wali melihat prestasi mahasiswa bimbingan
+func (s *achievementService) GetAdviseeAchievements(c *fiber.Ctx) error {
+	userID := c.Locals("user_id").(uuid.UUID).String()
+
+	advisorID, err := s.repo.GetAdvisorIDByUserID(userID)
+	if err != nil {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"status": "error", "message": "Anda bukan dosen wali"})
+	}
+
+	// 1. Ambil Referensi dari Postgres (Filter by Advisor ID)
+	refs, err := s.repo.FindAllByAdvisorID(advisorID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"status": "error", "message": err.Error()})
+	}
+
+	// 2. Gabungkan dengan detail Mongo
+	finalData, err := s.mergeData(refs)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"status": "error", "message": "Gagal mengambil detail prestasi"})
+	}
+
+	return c.JSON(fiber.Map{
+		"status": "success",
+		"data":   finalData,
+	})
+}
+
+// --- 3. FEATURE: VERIFICATION (DOSEN WALI) ---
+
+type VerifyRequest struct {
+	Status string `json:"status" validate:"required,oneof=verified rejected"`
+	Notes  string `json:"notes"`
+}
+
+func (s *achievementService) VerifyAchievement(c *fiber.Ctx) error {
+	// Ambil ID Prestasi dari URL parameter
+	achievementID := c.Params("id")
+	
+	// Ambil ID Dosen dari Token
+	userID := c.Locals("user_id").(uuid.UUID).String()
+
+	// Parse Body
+	var req VerifyRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"status": "error", "message": "Format status salah"})
+	}
+
+	// Validasi Status
+	if req.Status != "verified" && req.Status != "rejected" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"status": "error", "message": "Status hanya boleh 'verified' atau 'rejected'"})
+	}
+
+	// Update Status di Database
+	err := s.repo.UpdateStatus(achievementID, req.Status, req.Notes, userID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"status": "error", "message": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{
+		"status": "success",
+		"message": "Status prestasi berhasil diperbarui",
 	})
 }
