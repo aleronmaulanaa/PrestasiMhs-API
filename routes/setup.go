@@ -22,7 +22,7 @@
 // 	userRepo := repositories.NewUserRepository()
 // 	userService := services.NewUserService(userRepo)
 
-// 	// -- Achievement Feature (BARU) --
+// 	// -- Achievement Feature --
 // 	achievementRepo := repositories.NewAchievementRepository()
 // 	achievementService := services.NewAchievementService(achievementRepo)
 
@@ -35,20 +35,27 @@
 // 	auth.Post("/login", authService.Login)
 
 // 	// --- Protected Routes (Butuh Token) ---
-// 	// Middleware.Protected() wajib ada untuk mengecek Token valid
 	
 // 	// A. User Management Routes (Admin Only)
 // 	users := api.Group("/users", middleware.Protected(), middleware.RoleMiddleware("Admin"))
 // 	users.Post("/lecturers", userService.RegisterLecturer)
 // 	users.Post("/students", userService.RegisterStudent)
 
-// 	// B. Achievement Routes (Mahasiswa Only)
-// 	// Kita buat group '/achievements' yang dilindungi middleware Protected
+// 	// B. Achievement Routes
+// 	// Group umum yang diproteksi token (login wajib)
 // 	achievements := api.Group("/achievements", middleware.Protected())
 	
-// 	// Endpoint: POST /api/v1/achievements
-// 	// Hanya boleh diakses oleh role "Mahasiswa"
+// 	// 1. Fitur Mahasiswa
+// 	// Upload Prestasi
 // 	achievements.Post("/", middleware.RoleMiddleware("Mahasiswa"), achievementService.CreateAchievement)
+// 	// Lihat Prestasi Sendiri
+// 	achievements.Get("/my", middleware.RoleMiddleware("Mahasiswa"), achievementService.GetMyAchievements)
+
+// 	// 2. Fitur Dosen Wali
+// 	// Lihat Prestasi Mahasiswa Bimbingan
+// 	achievements.Get("/advisees", middleware.RoleMiddleware("Dosen Wali"), achievementService.GetAdviseeAchievements)
+// 	// Verifikasi Prestasi (Approve/Reject)
+// 	achievements.Put("/:id/verify", middleware.RoleMiddleware("Dosen Wali"), achievementService.VerifyAchievement)
 // }
 
 
@@ -104,6 +111,8 @@ func SetupRoutes(app *fiber.App) {
 	achievements.Post("/", middleware.RoleMiddleware("Mahasiswa"), achievementService.CreateAchievement)
 	// Lihat Prestasi Sendiri
 	achievements.Get("/my", middleware.RoleMiddleware("Mahasiswa"), achievementService.GetMyAchievements)
+	// [NEW] Submit Prestasi (Finalisasi Draft)
+	achievements.Put("/:id/submit", middleware.RoleMiddleware("Mahasiswa"), achievementService.SubmitAchievement)
 
 	// 2. Fitur Dosen Wali
 	// Lihat Prestasi Mahasiswa Bimbingan
