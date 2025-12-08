@@ -17,6 +17,7 @@
 // 	// --- Commands (Write) ---
 // 	Create(mongoData *models.AchievementMongo, studentUUID string) error
 // 	UpdateStatus(id string, status string, notes string, verifierID string) error
+// 	Submit(id string) error // [NEW] Feature Submit
 	
 // 	// --- Queries (Read) ---
 // 	GetStudentIDByUserID(userID string) (string, error)
@@ -94,14 +95,11 @@
 
 // func (r *achievementRepository) UpdateStatus(id string, status string, notes string, verifierID string) error {
 // 	// Query update status dan waktu verifikasi
-// 	// Menggunakan Exec (Aturan No. 11)
 // 	query := `
 // 		UPDATE achievement_references 
 // 		SET status = $1, rejection_note = $2, verified_by = $3, verified_at = NOW(), updated_at = NOW()
 // 		WHERE id = $4
 // 	`
-// 	// Jika rejection_note kosong, kita kirim NULL (sql.NullString) atau string kosong tergantung setup,
-// 	// disini kita kirim string biasa, jika kosong biarkan kosong.
 	
 // 	result, err := r.pg.Exec(query, status, notes, verifierID, id)
 // 	if err != nil {
@@ -111,6 +109,27 @@
 // 	rows, _ := result.RowsAffected()
 // 	if rows == 0 {
 // 		return errors.New("prestasi tidak ditemukan")
+// 	}
+// 	return nil
+// }
+
+// // [NEW] Submit mengubah status draft menjadi submitted
+// func (r *achievementRepository) Submit(id string) error {
+// 	query := `
+// 		UPDATE achievement_references 
+// 		SET status = 'submitted', submitted_at = NOW(), updated_at = NOW()
+// 		WHERE id = $1 AND status = 'draft'
+// 	`
+// 	// Klausa "AND status = 'draft'" penting agar prestasi yang sudah diverifikasi tidak bisa di-submit ulang
+	
+// 	result, err := r.pg.Exec(query, id)
+// 	if err != nil {
+// 		return err
+// 	}
+
+// 	rows, _ := result.RowsAffected()
+// 	if rows == 0 {
+// 		return errors.New("prestasi tidak ditemukan atau status bukan draft")
 // 	}
 // 	return nil
 // }
@@ -134,8 +153,6 @@
 // 	var refs []models.AchievementReference
 // 	for rows.Next() {
 // 		var ref models.AchievementReference
-// 		// Handle nullable fields appropriately if using sql.Null* types, 
-// 		// but for simplicity assuming string/time is fine or handled by driver
 // 		var note sql.NullString
 // 		var verAt sql.NullTime
 
@@ -153,7 +170,6 @@
 
 // // FindAllByAdvisorID: Untuk Dosen Wali melihat mahasiswa bimbingannya
 // func (r *achievementRepository) FindAllByAdvisorID(advisorID string) ([]models.AchievementReference, error) {
-// 	// JOIN tabel achievement_references dengan students
 // 	query := `
 // 		SELECT ar.id, ar.student_id, ar.mongo_achievement_id, ar.status, ar.rejection_note, ar.created_at
 // 		FROM achievement_references ar
@@ -339,10 +355,11 @@ func (r *achievementRepository) Create(mongoData *models.AchievementMongo, stude
 
 func (r *achievementRepository) UpdateStatus(id string, status string, notes string, verifierID string) error {
 	// Query update status dan waktu verifikasi
+	// [PERBAIKAN] Tambahkan "AND status = 'submitted'" agar hanya yang sudah submit yang bisa diverifikasi
 	query := `
 		UPDATE achievement_references 
 		SET status = $1, rejection_note = $2, verified_by = $3, verified_at = NOW(), updated_at = NOW()
-		WHERE id = $4
+		WHERE id = $4 AND status = 'submitted'
 	`
 	
 	result, err := r.pg.Exec(query, status, notes, verifierID, id)
@@ -352,12 +369,12 @@ func (r *achievementRepository) UpdateStatus(id string, status string, notes str
 
 	rows, _ := result.RowsAffected()
 	if rows == 0 {
-		return errors.New("prestasi tidak ditemukan")
+		return errors.New("prestasi tidak ditemukan atau belum disubmit oleh mahasiswa")
 	}
 	return nil
 }
 
-// [NEW] Submit mengubah status draft menjadi submitted
+// Submit mengubah status draft menjadi submitted
 func (r *achievementRepository) Submit(id string) error {
 	query := `
 		UPDATE achievement_references 
@@ -414,11 +431,12 @@ func (r *achievementRepository) FindAllByStudentID(studentID string) ([]models.A
 
 // FindAllByAdvisorID: Untuk Dosen Wali melihat mahasiswa bimbingannya
 func (r *achievementRepository) FindAllByAdvisorID(advisorID string) ([]models.AchievementReference, error) {
+	// [PERBAIKAN] Tambahkan "AND ar.status != 'draft'" agar Dosen tidak melihat Draft
 	query := `
 		SELECT ar.id, ar.student_id, ar.mongo_achievement_id, ar.status, ar.rejection_note, ar.created_at
 		FROM achievement_references ar
 		JOIN students s ON ar.student_id = s.id
-		WHERE s.advisor_id = $1 AND ar.status != 'deleted'
+		WHERE s.advisor_id = $1 AND ar.status != 'deleted' AND ar.status != 'draft'
 		ORDER BY ar.created_at DESC
 	`
 	rows, err := r.pg.Query(query, advisorID)
