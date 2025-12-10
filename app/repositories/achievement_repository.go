@@ -95,10 +95,11 @@
 
 // func (r *achievementRepository) UpdateStatus(id string, status string, notes string, verifierID string) error {
 // 	// Query update status dan waktu verifikasi
+// 	// [PERBAIKAN] Tambahkan "AND status = 'submitted'" agar hanya yang sudah submit yang bisa diverifikasi
 // 	query := `
 // 		UPDATE achievement_references 
 // 		SET status = $1, rejection_note = $2, verified_by = $3, verified_at = NOW(), updated_at = NOW()
-// 		WHERE id = $4
+// 		WHERE id = $4 AND status = 'submitted'
 // 	`
 	
 // 	result, err := r.pg.Exec(query, status, notes, verifierID, id)
@@ -108,12 +109,12 @@
 
 // 	rows, _ := result.RowsAffected()
 // 	if rows == 0 {
-// 		return errors.New("prestasi tidak ditemukan")
+// 		return errors.New("prestasi tidak ditemukan atau belum disubmit oleh mahasiswa")
 // 	}
 // 	return nil
 // }
 
-// // [NEW] Submit mengubah status draft menjadi submitted
+// // Submit mengubah status draft menjadi submitted
 // func (r *achievementRepository) Submit(id string) error {
 // 	query := `
 // 		UPDATE achievement_references 
@@ -170,11 +171,12 @@
 
 // // FindAllByAdvisorID: Untuk Dosen Wali melihat mahasiswa bimbingannya
 // func (r *achievementRepository) FindAllByAdvisorID(advisorID string) ([]models.AchievementReference, error) {
+// 	// [PERBAIKAN] Tambahkan "AND ar.status != 'draft'" agar Dosen tidak melihat Draft
 // 	query := `
 // 		SELECT ar.id, ar.student_id, ar.mongo_achievement_id, ar.status, ar.rejection_note, ar.created_at
 // 		FROM achievement_references ar
 // 		JOIN students s ON ar.student_id = s.id
-// 		WHERE s.advisor_id = $1 AND ar.status != 'deleted'
+// 		WHERE s.advisor_id = $1 AND ar.status != 'deleted' AND ar.status != 'draft'
 // 		ORDER BY ar.created_at DESC
 // 	`
 // 	rows, err := r.pg.Query(query, advisorID)
@@ -277,8 +279,13 @@ type AchievementRepository interface {
 	// --- Commands (Write) ---
 	Create(mongoData *models.AchievementMongo, studentUUID string) error
 	UpdateStatus(id string, status string, notes string, verifierID string) error
-	Submit(id string) error // [NEW] Feature Submit
+	Submit(id string) error 
 	
+	// [NEW] Fitur Update & Delete (Fase 1)
+	FindMongoIDByRefID(refID string) (string, error)
+	UpdateMongo(mongoID string, updateData *models.AchievementMongo) error
+	SoftDelete(id string) error
+
 	// --- Queries (Read) ---
 	GetStudentIDByUserID(userID string) (string, error)
 	GetAdvisorIDByUserID(userID string) (string, error)
@@ -391,6 +398,76 @@ func (r *achievementRepository) Submit(id string) error {
 	rows, _ := result.RowsAffected()
 	if rows == 0 {
 		return errors.New("prestasi tidak ditemukan atau status bukan draft")
+	}
+	return nil
+}
+
+// --- [NEW] FASE 1: Update & Delete Implementation ---
+
+// 1. Helper untuk mencari ID Mongo berdasarkan ID Referensi Postgres
+func (r *achievementRepository) FindMongoIDByRefID(refID string) (string, error) {
+	var mongoID string
+	query := "SELECT mongo_achievement_id FROM achievement_references WHERE id = $1"
+	err := r.pg.QueryRow(query, refID).Scan(&mongoID)
+	if err != nil {
+		return "", errors.New("referensi prestasi tidak ditemukan")
+	}
+	return mongoID, nil
+}
+
+// 2. Update data detail di MongoDB
+func (r *achievementRepository) UpdateMongo(mongoID string, updateData *models.AchievementMongo) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	oid, err := primitive.ObjectIDFromHex(mongoID)
+	if err != nil {
+		return errors.New("format ID mongo tidak valid")
+	}
+
+	// Kita update field-field utama dan details
+	// Field 'Details' akan ditimpa total dengan struct baru (yang sudah sesuai SRS)
+	filter := bson.M{"_id": oid}
+	update := bson.M{
+		"$set": bson.M{
+			"achievementType": updateData.AchievementType,
+			"title":           updateData.Title,
+			"description":     updateData.Description,
+			"details":         updateData.Details, // Field dinamis diupdate disini
+			"updatedAt":       time.Now(),
+		},
+	}
+	
+	// Jika ada attachment baru, kita replace array attachments
+	// (Logic: jika user upload file baru saat update, file lama dianggap diganti)
+	if len(updateData.Attachments) > 0 {
+		update["$set"].(bson.M)["attachments"] = updateData.Attachments
+	}
+
+	_, err = r.mongo.Collection("achievements").UpdateOne(ctx, filter, update)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// 3. Soft Delete: Mengubah status menjadi 'deleted' (Sesuai Aturan No. 2)
+func (r *achievementRepository) SoftDelete(id string) error {
+	// PENTING: Klausa "AND status = 'draft'" menjaga agar prestasi yang sudah
+	// disubmit/diverifikasi TIDAK BISA dihapus sembarangan.
+	query := `
+		UPDATE achievement_references 
+		SET status = 'deleted', updated_at = NOW() 
+		WHERE id = $1 AND status = 'draft'
+	`
+	result, err := r.pg.Exec(query, id)
+	if err != nil {
+		return err
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return errors.New("prestasi tidak ditemukan atau status bukan draft (tidak bisa dihapus)")
 	}
 	return nil
 }

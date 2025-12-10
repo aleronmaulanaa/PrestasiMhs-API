@@ -161,21 +161,59 @@ type Attachment struct {
 
 // --- Request DTO (Input dari Postman/Form-Data) ---
 
+// // CreateAchievementRequest menangkap inputan form-data
+// type CreateAchievementRequest struct {
+// 	AchievementType string `form:"achievement_type" validate:"required"`
+// 	Title           string `form:"title" validate:"required"`
+// 	Description     string `form:"description" validate:"required"`
+	
+// 	// Details fields (Flat input from form-data)
+// 	CompetitionName  string `form:"competition_name"`
+// 	CompetitionLevel string `form:"competition_level"`
+// 	Rank             int    `form:"rank"`
+// 	OrganizationName string `form:"organization_name"`
+// 	Position         string `form:"position"`
+// 	Location         string `form:"location"`
+// 	Organizer        string `form:"organizer"`
+// 	EventDate        string `form:"event_date"` // String YYYY-MM-DD
+// }
+
 // CreateAchievementRequest menangkap inputan form-data
 type CreateAchievementRequest struct {
 	AchievementType string `form:"achievement_type" validate:"required"`
 	Title           string `form:"title" validate:"required"`
 	Description     string `form:"description" validate:"required"`
 	
-	// Details fields (Flat input from form-data)
+	// --- Details fields (Flat input from form-data) ---
+	
+	// Competition
 	CompetitionName  string `form:"competition_name"`
 	CompetitionLevel string `form:"competition_level"`
 	Rank             int    `form:"rank"`
+	MedalType        string `form:"medal_type"` // [NEW] Tambahkan ini
+
+	// Organization
 	OrganizationName string `form:"organization_name"`
 	Position         string `form:"position"`
-	Location         string `form:"location"`
 	Organizer        string `form:"organizer"`
+	Location         string `form:"location"`
 	EventDate        string `form:"event_date"` // String YYYY-MM-DD
+	
+	// Publication [NEW]
+	PublicationType  string `form:"publication_type"`
+	PublicationTitle string `form:"publication_title"`
+	Authors          string `form:"authors"` // Input string dipisah koma (nanti di-split di service)
+	Publisher        string `form:"publisher"`
+	ISSN             string `form:"issn"`
+
+	// Certification [NEW]
+	CertificationName   string `form:"certification_name"`
+	IssuedBy            string `form:"issued_by"`
+	CertificationNumber string `form:"certification_number"`
+	ValidUntil          string `form:"valid_until"` // String YYYY-MM-DD
+
+	// General
+	Score float64 `form:"score"` // [NEW]
 }
 
 // --- PostgreSQL Reference Model (TAMBAHAN BARU) ---

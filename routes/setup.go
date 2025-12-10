@@ -50,6 +50,8 @@
 // 	achievements.Post("/", middleware.RoleMiddleware("Mahasiswa"), achievementService.CreateAchievement)
 // 	// Lihat Prestasi Sendiri
 // 	achievements.Get("/my", middleware.RoleMiddleware("Mahasiswa"), achievementService.GetMyAchievements)
+// 	// [NEW] Submit Prestasi (Finalisasi Draft)
+// 	achievements.Put("/:id/submit", middleware.RoleMiddleware("Mahasiswa"), achievementService.SubmitAchievement)
 
 // 	// 2. Fitur Dosen Wali
 // 	// Lihat Prestasi Mahasiswa Bimbingan
@@ -111,8 +113,14 @@ func SetupRoutes(app *fiber.App) {
 	achievements.Post("/", middleware.RoleMiddleware("Mahasiswa"), achievementService.CreateAchievement)
 	// Lihat Prestasi Sendiri
 	achievements.Get("/my", middleware.RoleMiddleware("Mahasiswa"), achievementService.GetMyAchievements)
-	// [NEW] Submit Prestasi (Finalisasi Draft)
+	// Submit Prestasi (Finalisasi Draft)
 	achievements.Put("/:id/submit", middleware.RoleMiddleware("Mahasiswa"), achievementService.SubmitAchievement)
+	
+	// [NEW] Update & Delete (Fase 1) - Endpoint Baru
+	// Endpoint untuk mengedit prestasi (hanya draft)
+	achievements.Put("/:id", middleware.RoleMiddleware("Mahasiswa"), achievementService.UpdateAchievement)
+	// Endpoint untuk menghapus prestasi (hanya draft)
+	achievements.Delete("/:id", middleware.RoleMiddleware("Mahasiswa"), achievementService.DeleteAchievement)
 
 	// 2. Fitur Dosen Wali
 	// Lihat Prestasi Mahasiswa Bimbingan

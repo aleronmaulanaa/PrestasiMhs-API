@@ -18,6 +18,7 @@
 // 	GetMyAchievements(c *fiber.Ctx) error      // Untuk Mahasiswa
 // 	GetAdviseeAchievements(c *fiber.Ctx) error // Untuk Dosen Wali
 // 	VerifyAchievement(c *fiber.Ctx) error      // Untuk Dosen Wali (Approve/Reject)
+// 	SubmitAchievement(c *fiber.Ctx) error      // [NEW] Untuk Mahasiswa (Draft -> Submitted)
 // }
 
 // type achievementService struct {
@@ -124,6 +125,37 @@
 // 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
 // 		"status":  "success",
 // 		"message": "Prestasi berhasil disimpan sebagai draft",
+// 	})
+// }
+
+// // [NEW] SubmitAchievement: Mahasiswa mengirim draft untuk diverifikasi
+// func (s *achievementService) SubmitAchievement(c *fiber.Ctx) error {
+// 	id := c.Params("id")
+// 	userID := c.Locals("user_id").(uuid.UUID).String()
+
+// 	// 1. Validasi Kepemilikan (Cek apakah prestasi ini milik user yang login)
+// 	studentID, err := s.repo.GetStudentIDByUserID(userID)
+// 	if err != nil {
+// 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"status": "error", "message": "User tidak valid"})
+// 	}
+
+// 	// Cek di database apakah ID prestasi ini milik studentID tersebut
+// 	ref, err := s.repo.FindRefByID(id)
+// 	if err != nil || ref.StudentID != studentID {
+// 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"status": "error", "message": "Prestasi tidak ditemukan"})
+// 	}
+
+// 	// 2. Lakukan Submit
+// 	if err := s.repo.Submit(id); err != nil {
+// 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+// 			"status":  "error",
+// 			"message": err.Error(), // Pesan error jika status bukan draft
+// 		})
+// 	}
+
+// 	return c.JSON(fiber.Map{
+// 		"status":  "success",
+// 		"message": "Prestasi berhasil disubmit dan siap diverifikasi",
 // 	})
 // }
 
@@ -269,7 +301,11 @@ type AchievementService interface {
 	GetMyAchievements(c *fiber.Ctx) error      // Untuk Mahasiswa
 	GetAdviseeAchievements(c *fiber.Ctx) error // Untuk Dosen Wali
 	VerifyAchievement(c *fiber.Ctx) error      // Untuk Dosen Wali (Approve/Reject)
-	SubmitAchievement(c *fiber.Ctx) error      // [NEW] Untuk Mahasiswa (Draft -> Submitted)
+	SubmitAchievement(c *fiber.Ctx) error      // Untuk Mahasiswa (Draft -> Submitted)
+	
+	// [NEW] Update & Delete (Fase 1)
+	UpdateAchievement(c *fiber.Ctx) error
+	DeleteAchievement(c *fiber.Ctx) error
 }
 
 type achievementService struct {
@@ -282,7 +318,7 @@ func NewAchievementService(repo repositories.AchievementRepository) AchievementS
 	}
 }
 
-// --- 1. FEATURE: UPLOAD PRESTASI ---
+// --- 1. FEATURE: UPLOAD & MANAGE PRESTASI ---
 
 func (s *achievementService) CreateAchievement(c *fiber.Ctx) error {
 	// 1. Ambil User ID dari Token
@@ -362,6 +398,9 @@ func (s *achievementService) CreateAchievement(c *fiber.Ctx) error {
 			Location:         req.Location,
 			Organizer:        req.Organizer,
 			EventDate:        eventDate,
+			// Field tambahan sesuai update model terakhir
+			MedalType:           req.MedalType, // Pastikan field ini ada di request struct jika ingin disimpan
+			// Anda bisa menambahkan mapping lain jika req struct sudah diupdate
 		},
 	}
 
@@ -379,7 +418,142 @@ func (s *achievementService) CreateAchievement(c *fiber.Ctx) error {
 	})
 }
 
-// [NEW] SubmitAchievement: Mahasiswa mengirim draft untuk diverifikasi
+// [NEW] UpdateAchievement: Mengubah data prestasi (hanya jika status draft)
+func (s *achievementService) UpdateAchievement(c *fiber.Ctx) error {
+	id := c.Params("id") // ID Referensi Postgres
+	userID := c.Locals("user_id").(uuid.UUID).String()
+
+	// 1. Validasi User (Apakah dia Mahasiswa?)
+	studentID, err := s.repo.GetStudentIDByUserID(userID)
+	if err != nil {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"status": "error", "message": "Akses ditolak"})
+	}
+
+	// 2. Cek Kepemilikan & Status Prestasi
+	ref, err := s.repo.FindRefByID(id)
+	if err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"status": "error", "message": "Prestasi tidak ditemukan"})
+	}
+
+	// Pastikan yang akses adalah pemilik prestasi
+	if ref.StudentID != studentID {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"status": "error", "message": "Anda tidak memiliki akses ke prestasi ini"})
+	}
+
+	// Pastikan status masih 'draft'
+	if ref.Status != "draft" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"status": "error", "message": "Hanya prestasi berstatus draft yang bisa diubah"})
+	}
+
+	// 3. Parsing Input Form Data Baru
+	var req models.CreateAchievementRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"status": "error", "message": "Format input salah"})
+	}
+
+	// 4. Handle File Upload (Opsional, jika user upload file baru)
+	var attachments []models.Attachment
+	file, err := c.FormFile("file")
+	
+	// Jika ada file baru, kita proses. Jika tidak, attachments dibiarkan kosong (di Repo logic-nya tidak akan mereplace jika kosong)
+	if err == nil {
+		ext := filepath.Ext(file.Filename)
+		newFileName := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
+		
+		var subFolder string
+		lowerExt := strings.ToLower(ext)
+		switch lowerExt {
+		case ".jpg", ".jpeg", ".png", ".gif", ".webp":
+			subFolder = "photos"
+		default:
+			subFolder = "documents"
+		}
+		
+		filePath := fmt.Sprintf("./uploads/%s/%s", subFolder, newFileName)
+		if err := c.SaveFile(file, filePath); err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"status": "error", "message": "Gagal menyimpan file baru"})
+		}
+
+		attachments = append(attachments, models.Attachment{
+			FileName:   file.Filename,
+			FileURL:    filePath,
+			FileType:   file.Header.Get("Content-Type"),
+			UploadedAt: time.Now(),
+		})
+	}
+
+	// 5. Mapping Data ke Model Mongo
+	eventDate, _ := time.Parse("2006-01-02", req.EventDate)
+
+	updateData := &models.AchievementMongo{
+		AchievementType: req.AchievementType,
+		Title:           req.Title,
+		Description:     req.Description,
+		Attachments:     attachments, 
+		Details: models.AchievementDetails{
+			CompetitionName:  req.CompetitionName,
+			CompetitionLevel: req.CompetitionLevel,
+			Rank:             req.Rank,
+			OrganizationName: req.OrganizationName,
+			Position:         req.Position,
+			Location:         req.Location,
+			Organizer:        req.Organizer,
+			EventDate:        eventDate,
+			// Tambahkan mapping field lain (Publication/Certification) disini jika sudah ada di Request DTO
+		},
+	}
+
+	// 6. Lakukan Update via Repository
+	// Kita gunakan MongoID yang kita dapat dari 'ref' (FindRefByID)
+	if err := s.repo.UpdateMongo(ref.MongoAchievementID, updateData); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal mengupdate data: " + err.Error(),
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"status":  "success",
+		"message": "Prestasi berhasil diperbarui",
+	})
+}
+
+// [NEW] DeleteAchievement: Soft Delete data prestasi (hanya jika status draft)
+func (s *achievementService) DeleteAchievement(c *fiber.Ctx) error {
+	id := c.Params("id") // ID Referensi Postgres
+	userID := c.Locals("user_id").(uuid.UUID).String()
+
+	// 1. Validasi User
+	studentID, err := s.repo.GetStudentIDByUserID(userID)
+	if err != nil {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"status": "error", "message": "Akses ditolak"})
+	}
+
+	// 2. Cek Kepemilikan
+	ref, err := s.repo.FindRefByID(id)
+	if err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"status": "error", "message": "Prestasi tidak ditemukan"})
+	}
+
+	if ref.StudentID != studentID {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"status": "error", "message": "Anda tidak memiliki akses menghapus prestasi ini"})
+	}
+
+	// 3. Lakukan Soft Delete (Repo akan otomatis cek apakah statusnya draft)
+	if err := s.repo.SoftDelete(id); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": err.Error(), // Pesan error dari repo (misal: bukan draft)
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"status":  "success",
+		"message": "Prestasi berhasil dihapus (soft delete)",
+	})
+}
+
+// SubmitAchievement: Mahasiswa mengirim draft untuk diverifikasi
 func (s *achievementService) SubmitAchievement(c *fiber.Ctx) error {
 	id := c.Params("id")
 	userID := c.Locals("user_id").(uuid.UUID).String()
