@@ -50,8 +50,14 @@
 // 	achievements.Post("/", middleware.RoleMiddleware("Mahasiswa"), achievementService.CreateAchievement)
 // 	// Lihat Prestasi Sendiri
 // 	achievements.Get("/my", middleware.RoleMiddleware("Mahasiswa"), achievementService.GetMyAchievements)
-// 	// [NEW] Submit Prestasi (Finalisasi Draft)
+// 	// Submit Prestasi (Finalisasi Draft)
 // 	achievements.Put("/:id/submit", middleware.RoleMiddleware("Mahasiswa"), achievementService.SubmitAchievement)
+	
+// 	// [NEW] Update & Delete (Fase 1) - Endpoint Baru
+// 	// Endpoint untuk mengedit prestasi (hanya draft)
+// 	achievements.Put("/:id", middleware.RoleMiddleware("Mahasiswa"), achievementService.UpdateAchievement)
+// 	// Endpoint untuk menghapus prestasi (hanya draft)
+// 	achievements.Delete("/:id", middleware.RoleMiddleware("Mahasiswa"), achievementService.DeleteAchievement)
 
 // 	// 2. Fitur Dosen Wali
 // 	// Lihat Prestasi Mahasiswa Bimbingan
@@ -74,7 +80,7 @@ func SetupRoutes(app *fiber.App) {
 	api := app.Group("/api/v1")
 
 	// ============================================
-	// 1. DEPENDENCY INJECTION (Menyiapkan Layer)
+	// 1. DEPENDENCY INJECTION 
 	// ============================================
 	
 	// -- Auth Feature --
@@ -93,38 +99,40 @@ func SetupRoutes(app *fiber.App) {
 	// 2. ROUTE DEFINITIONS
 	// ============================================
 
-	// --- Public Routes (Tidak butuh token) ---
+	// --- Public Routes ---
 	auth := api.Group("/auth")
 	auth.Post("/login", authService.Login)
 
-	// --- Protected Routes (Butuh Token) ---
+	// --- Protected Routes ---
 	
-	// A. User Management Routes (Admin Only)
+	// A. User Management (Admin)
 	users := api.Group("/users", middleware.Protected(), middleware.RoleMiddleware("Admin"))
 	users.Post("/lecturers", userService.RegisterLecturer)
 	users.Post("/students", userService.RegisterStudent)
 
-	// B. Achievement Routes
-	// Group umum yang diproteksi token (login wajib)
+	// B. Achievement Routes (Mahasiswa & Dosen)
 	achievements := api.Group("/achievements", middleware.Protected())
 	
 	// 1. Fitur Mahasiswa
-	// Upload Prestasi
+	// Upload & List
 	achievements.Post("/", middleware.RoleMiddleware("Mahasiswa"), achievementService.CreateAchievement)
-	// Lihat Prestasi Sendiri
 	achievements.Get("/my", middleware.RoleMiddleware("Mahasiswa"), achievementService.GetMyAchievements)
-	// Submit Prestasi (Finalisasi Draft)
-	achievements.Put("/:id/submit", middleware.RoleMiddleware("Mahasiswa"), achievementService.SubmitAchievement)
 	
-	// [NEW] Update & Delete (Fase 1) - Endpoint Baru
-	// Endpoint untuk mengedit prestasi (hanya draft)
+	// [NEW] Detail & History (Fase 1)
+	achievements.Get("/:id", middleware.RoleMiddleware("Mahasiswa"), achievementService.GetAchievementByID)
+	achievements.Get("/:id/history", middleware.RoleMiddleware("Mahasiswa"), achievementService.GetAchievementHistory)
+
+	// Update & Delete (Draft Only)
 	achievements.Put("/:id", middleware.RoleMiddleware("Mahasiswa"), achievementService.UpdateAchievement)
-	// Endpoint untuk menghapus prestasi (hanya draft)
 	achievements.Delete("/:id", middleware.RoleMiddleware("Mahasiswa"), achievementService.DeleteAchievement)
 
+	// Submit (Finalisasi) - [FIX] Method POST sesuai SRS
+	achievements.Post("/:id/submit", middleware.RoleMiddleware("Mahasiswa"), achievementService.SubmitAchievement)
+	
 	// 2. Fitur Dosen Wali
-	// Lihat Prestasi Mahasiswa Bimbingan
+	// List Bimbingan
 	achievements.Get("/advisees", middleware.RoleMiddleware("Dosen Wali"), achievementService.GetAdviseeAchievements)
-	// Verifikasi Prestasi (Approve/Reject)
-	achievements.Put("/:id/verify", middleware.RoleMiddleware("Dosen Wali"), achievementService.VerifyAchievement)
+	
+	// Verify (Approve/Reject) - [FIX] Method POST sesuai SRS
+	achievements.Post("/:id/verify", middleware.RoleMiddleware("Dosen Wali"), achievementService.VerifyAchievement)
 }
