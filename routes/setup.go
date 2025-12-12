@@ -49,9 +49,11 @@
 // 	achievements.Post("/", middleware.RoleMiddleware("Mahasiswa"), achievementService.CreateAchievement)
 // 	achievements.Get("/my", middleware.RoleMiddleware("Mahasiswa"), achievementService.GetMyAchievements)
 	
-// 	// Detail & History (Fase 1)
-// 	achievements.Get("/:id", middleware.RoleMiddleware("Mahasiswa"), achievementService.GetAchievementByID)
-// 	achievements.Get("/:id/history", middleware.RoleMiddleware("Mahasiswa"), achievementService.GetAchievementHistory)
+// 	// Detail & History (Fase 1 - DIPERBAIKI)
+// 	// Tidak pakai RoleMiddleware khusus disini karena logic cek akses ada di Service
+// 	// (Agar Dosen Wali juga bisa lihat detail/history untuk verifikasi)
+// 	achievements.Get("/:id", achievementService.GetAchievementByID)
+// 	achievements.Get("/:id/history", achievementService.GetAchievementHistory)
 
 // 	// Update & Delete (Draft Only)
 // 	achievements.Put("/:id", middleware.RoleMiddleware("Mahasiswa"), achievementService.UpdateAchievement)
@@ -75,7 +77,7 @@ package routes
 import (
 	"PrestasiMhs-API/app/repositories"
 	"PrestasiMhs-API/app/services"
-	"PrestasiMhs-API/middleware" // Import Middleware
+	"PrestasiMhs-API/middleware"
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -86,15 +88,12 @@ func SetupRoutes(app *fiber.App) {
 	// 1. DEPENDENCY INJECTION 
 	// ============================================
 	
-	// -- Auth Feature --
 	authRepo := repositories.NewAuthRepository()
 	authService := services.NewAuthService(authRepo)
 
-	// -- User Management Feature --
 	userRepo := repositories.NewUserRepository()
 	userService := services.NewUserService(userRepo)
 
-	// -- Achievement Feature --
 	achievementRepo := repositories.NewAchievementRepository()
 	achievementService := services.NewAchievementService(achievementRepo)
 
@@ -102,43 +101,44 @@ func SetupRoutes(app *fiber.App) {
 	// 2. ROUTE DEFINITIONS
 	// ============================================
 
-	// --- Public Routes ---
+	// --- Public ---
 	auth := api.Group("/auth")
 	auth.Post("/login", authService.Login)
 
-	// --- Protected Routes ---
+	// --- Protected ---
 	
-	// A. User Management (Admin)
+	// A. User Management (Admin Only - SRS 5.2 & 5.5)
 	users := api.Group("/users", middleware.Protected(), middleware.RoleMiddleware("Admin"))
+	users.Get("/", userService.GetAllUsers)         // [NEW] List All Users
+	users.Delete("/:id", userService.DeleteUser)    // [NEW] Delete User
 	users.Post("/lecturers", userService.RegisterLecturer)
 	users.Post("/students", userService.RegisterStudent)
 
-	// B. Achievement Routes
+	// Relations Management (Admin Only)
+	students := api.Group("/students", middleware.Protected(), middleware.RoleMiddleware("Admin"))
+	students.Get("/", userService.GetAllStudents)           // [NEW] List Students (utk liat ID)
+	students.Put("/:id/advisor", userService.AssignAdvisor) // [NEW] Assign Dosen Wali
+
+	lecturers := api.Group("/lecturers", middleware.Protected(), middleware.RoleMiddleware("Admin"))
+	lecturers.Get("/", userService.GetAllLecturers)         // [NEW] List Lecturers (utk liat ID)
+
+	// B. Achievement Routes (Fase 1 Completed)
 	achievements := api.Group("/achievements", middleware.Protected())
 	
-	// 1. Fitur Mahasiswa
-	// Upload & List
+	// Mahasiswa
 	achievements.Post("/", middleware.RoleMiddleware("Mahasiswa"), achievementService.CreateAchievement)
 	achievements.Get("/my", middleware.RoleMiddleware("Mahasiswa"), achievementService.GetMyAchievements)
 	
-	// Detail & History (Fase 1 - DIPERBAIKI)
-	// Tidak pakai RoleMiddleware khusus disini karena logic cek akses ada di Service
-	// (Agar Dosen Wali juga bisa lihat detail/history untuk verifikasi)
+	// Hybrid Access (Service handles Security Check)
 	achievements.Get("/:id", achievementService.GetAchievementByID)
 	achievements.Get("/:id/history", achievementService.GetAchievementHistory)
 
-	// Update & Delete (Draft Only)
 	achievements.Put("/:id", middleware.RoleMiddleware("Mahasiswa"), achievementService.UpdateAchievement)
 	achievements.Delete("/:id", middleware.RoleMiddleware("Mahasiswa"), achievementService.DeleteAchievement)
-
-	// Submit (Finalisasi) - POST sesuai SRS
 	achievements.Post("/:id/submit", middleware.RoleMiddleware("Mahasiswa"), achievementService.SubmitAchievement)
 	
-	// 2. Fitur Dosen Wali
-	// List Bimbingan
+	// Dosen Wali
 	achievements.Get("/advisees", middleware.RoleMiddleware("Dosen Wali"), achievementService.GetAdviseeAchievements)
-	
-	// Verify & Reject (Sesuai SRS Endpoint 5.4 dan FR-007, FR-008)
 	achievements.Post("/:id/verify", middleware.RoleMiddleware("Dosen Wali"), achievementService.VerifyAchievement)
 	achievements.Post("/:id/reject", middleware.RoleMiddleware("Dosen Wali"), achievementService.RejectAchievement)
 }
