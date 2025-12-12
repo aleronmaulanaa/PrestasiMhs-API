@@ -17,16 +17,19 @@
 // 	CreateAchievement(c *fiber.Ctx) error
 // 	GetMyAchievements(c *fiber.Ctx) error      
 // 	GetAdviseeAchievements(c *fiber.Ctx) error 
-// 	VerifyAchievement(c *fiber.Ctx) error      
 // 	SubmitAchievement(c *fiber.Ctx) error      
 	
 // 	// [Fase 1: Update & Delete]
 // 	UpdateAchievement(c *fiber.Ctx) error
 // 	DeleteAchievement(c *fiber.Ctx) error
 
-// 	// [Fase 1: Detail & History - TAMBAHAN BARU]
+// 	// [Fase 1: Detail & History]
 // 	GetAchievementByID(c *fiber.Ctx) error
 // 	GetAchievementHistory(c *fiber.Ctx) error
+
+//     // [FIX: Split Verify & Reject sesuai SRS FR-007 & FR-008]
+// 	VerifyAchievement(c *fiber.Ctx) error
+// 	RejectAchievement(c *fiber.Ctx) error
 // }
 
 // type achievementService struct {
@@ -39,7 +42,7 @@
 // 	}
 // }
 
-// // --- 1. FEATURE: UPLOAD & CREATE ---
+// // --- 1. FEATURE: UPLOAD & MANAGE PRESTASI (Mahasiswa) ---
 
 // func (s *achievementService) CreateAchievement(c *fiber.Ctx) error {
 // 	userID := c.Locals("user_id").(uuid.UUID).String()
@@ -104,7 +107,7 @@
 // 			Organizer:        req.Organizer,
 // 			EventDate:        eventDate,
 // 			MedalType:        req.MedalType,
-//             // Tambahkan mapping field lain jika diperlukan sesuai struct request
+//             // Mapping field lain...
 // 		},
 // 	}
 
@@ -114,8 +117,6 @@
 
 // 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"status": "success", "message": "Prestasi berhasil disimpan sebagai draft"})
 // }
-
-// // --- 2. FEATURE: UPDATE & DELETE (Fase 1) ---
 
 // func (s *achievementService) UpdateAchievement(c *fiber.Ctx) error {
 // 	id := c.Params("id")
@@ -222,7 +223,28 @@
 // 	return c.JSON(fiber.Map{"status": "success", "message": "Prestasi berhasil dihapus (soft delete)"})
 // }
 
-// // --- 3. FEATURE: READ & HISTORY (Fase 1) ---
+// func (s *achievementService) SubmitAchievement(c *fiber.Ctx) error {
+// 	id := c.Params("id")
+// 	userID := c.Locals("user_id").(uuid.UUID).String()
+
+// 	studentID, err := s.repo.GetStudentIDByUserID(userID)
+// 	if err != nil {
+// 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"status": "error", "message": "User tidak valid"})
+// 	}
+
+// 	ref, err := s.repo.FindRefByID(id)
+// 	if err != nil || ref.StudentID != studentID {
+// 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"status": "error", "message": "Prestasi tidak ditemukan"})
+// 	}
+
+// 	if err := s.repo.Submit(id); err != nil {
+// 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"status": "error", "message": err.Error()})
+// 	}
+
+// 	return c.JSON(fiber.Map{"status": "success", "message": "Prestasi berhasil disubmit dan siap diverifikasi"})
+// }
+
+// // --- 2. FEATURE: READ DATA (Common) ---
 
 // func (s *achievementService) mergeData(refs []models.AchievementReference) ([]models.AchievementReference, error) {
 // 	if len(refs) == 0 {
@@ -278,46 +300,36 @@
 // 	return c.JSON(fiber.Map{"status": "success", "data": finalData})
 // }
 
-// // [NEW] GetAchievementByID: Mengambil satu data prestasi lengkap
 // func (s *achievementService) GetAchievementByID(c *fiber.Ctx) error {
 //     id := c.Params("id")
-
 //     ref, err := s.repo.FindRefByID(id)
 //     if err != nil {
 //         return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"status": "error", "message": "Prestasi tidak ditemukan"})
 //     }
-
 //     mongoIDs := []string{ref.MongoAchievementID}
 //     mongoDetails, err := s.repo.FindMongoDetails(mongoIDs)
 //     if err != nil {
 //         return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"status": "error", "message": "Gagal mengambil detail data"})
 //     }
-
 //     if detail, exists := mongoDetails[ref.MongoAchievementID]; exists {
 //         ref.Detail = &detail
 //     }
-
 //     return c.JSON(fiber.Map{"status": "success", "data": ref})
 // }
 
-// // [NEW] GetAchievementHistory: Timeline perubahan status
 // func (s *achievementService) GetAchievementHistory(c *fiber.Ctx) error {
 //     id := c.Params("id")
-
 //     ref, err := s.repo.FindRefByID(id)
 //     if err != nil {
 //         return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"status": "error", "message": "Prestasi tidak ditemukan"})
 //     }
-
 //     var history []fiber.Map
-
 //     history = append(history, fiber.Map{
 //         "status":    "draft",
 //         "timestamp": ref.CreatedAt,
 //         "note":      "Prestasi dibuat (Draft)",
 //         "actor":     "Mahasiswa",
 //     })
-
 //     if ref.SubmittedAt != nil {
 //         history = append(history, fiber.Map{
 //             "status":    "submitted",
@@ -326,70 +338,68 @@
 //             "actor":     "Mahasiswa",
 //         })
 //     }
-
 //     if ref.VerifiedAt != nil {
 //         note := "Prestasi telah diverifikasi"
 //         if ref.Status == "rejected" {
 //             note = "Prestasi ditolak: " + ref.RejectionNote
 //         }
 //         history = append(history, fiber.Map{
-//             "status":    ref.Status,
+//             "status":    ref.Status, 
 //             "timestamp": ref.VerifiedAt,
 //             "note":      note,
 //             "actor":     "Dosen Wali",
 //         })
 //     }
-
 //     return c.JSON(fiber.Map{"status": "success", "data": history})
 // }
 
-// // --- 4. FEATURE: WORKFLOW (SUBMIT & VERIFY) ---
+// // --- 3. FEATURE: WORKFLOW VERIFICATION (Dosen Wali) ---
 
-// func (s *achievementService) SubmitAchievement(c *fiber.Ctx) error {
-// 	id := c.Params("id")
-// 	userID := c.Locals("user_id").(uuid.UUID).String()
-
-// 	studentID, err := s.repo.GetStudentIDByUserID(userID)
-// 	if err != nil {
-// 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"status": "error", "message": "User tidak valid"})
-// 	}
-
-// 	ref, err := s.repo.FindRefByID(id)
-// 	if err != nil || ref.StudentID != studentID {
-// 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"status": "error", "message": "Prestasi tidak ditemukan"})
-// 	}
-
-// 	if err := s.repo.Submit(id); err != nil {
-// 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"status": "error", "message": err.Error()})
-// 	}
-
-// 	return c.JSON(fiber.Map{"status": "success", "message": "Prestasi berhasil disubmit dan siap diverifikasi"})
-// }
-
-// type VerifyRequest struct {
-// 	Status string `json:"status" validate:"required,oneof=verified rejected"`
-// 	Notes  string `json:"notes"`
-// }
-
+// // VerifyAchievement: Mengubah status menjadi 'verified' (FR-007)
 // func (s *achievementService) VerifyAchievement(c *fiber.Ctx) error {
 // 	achievementID := c.Params("id")
 // 	userID := c.Locals("user_id").(uuid.UUID).String()
 
-// 	var req VerifyRequest
-// 	if err := c.BodyParser(&req); err != nil {
-// 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"status": "error", "message": "Format status salah"})
-// 	}
-
-// 	if req.Status != "verified" && req.Status != "rejected" {
-// 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"status": "error", "message": "Status hanya boleh 'verified' atau 'rejected'"})
-// 	}
-
-// 	err := s.repo.UpdateStatus(achievementID, req.Status, req.Notes, userID)
+// 	// Logic FR-007: Dosen approve, status jadi verified. Tidak wajib ada notes.
+// 	err := s.repo.UpdateStatus(achievementID, "verified", "", userID)
 // 	if err != nil {
 // 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"status": "error", "message": err.Error()})
 // 	}
 
-// 	return c.JSON(fiber.Map{"status": "success", "message": "Status prestasi berhasil diperbarui"})
+// 	return c.JSON(fiber.Map{
+// 		"status": "success",
+// 		"message": "Prestasi berhasil diverifikasi",
+// 	})
+// }
+
+// // RejectAchievement: Mengubah status menjadi 'rejected' dengan catatan (FR-008)
+// func (s *achievementService) RejectAchievement(c *fiber.Ctx) error {
+// 	achievementID := c.Params("id")
+// 	userID := c.Locals("user_id").(uuid.UUID).String()
+
+// 	// Logic FR-008: Wajib ada rejection note
+// 	type RejectRequest struct {
+// 		Notes string `json:"notes" validate:"required"`
+// 	}
+
+// 	var req RejectRequest
+// 	if err := c.BodyParser(&req); err != nil {
+// 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"status": "error", "message": "Format input salah"})
+// 	}
+
+// 	if strings.TrimSpace(req.Notes) == "" {
+// 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"status": "error", "message": "Catatan penolakan wajib diisi"})
+// 	}
+
+// 	err := s.repo.UpdateStatus(achievementID, "rejected", req.Notes, userID)
+// 	if err != nil {
+// 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"status": "error", "message": err.Error()})
+// 	}
+
+// 	return c.JSON(fiber.Map{
+// 		"status": "success",
+// 		"message": "Prestasi berhasil ditolak",
+// 	})
 // }
 
 
@@ -410,19 +420,19 @@ import (
 
 type AchievementService interface {
 	CreateAchievement(c *fiber.Ctx) error
-	GetMyAchievements(c *fiber.Ctx) error      
-	GetAdviseeAchievements(c *fiber.Ctx) error 
-	SubmitAchievement(c *fiber.Ctx) error      
-	
+	GetMyAchievements(c *fiber.Ctx) error
+	GetAdviseeAchievements(c *fiber.Ctx) error
+	SubmitAchievement(c *fiber.Ctx) error
+
 	// [Fase 1: Update & Delete]
 	UpdateAchievement(c *fiber.Ctx) error
 	DeleteAchievement(c *fiber.Ctx) error
 
-	// [Fase 1: Detail & History]
+	// [Fase 1: Detail & History (FIXED)]
 	GetAchievementByID(c *fiber.Ctx) error
 	GetAchievementHistory(c *fiber.Ctx) error
 
-    // [FIX: Split Verify & Reject sesuai SRS FR-007 & FR-008]
+	// [FIX: Verify & Reject]
 	VerifyAchievement(c *fiber.Ctx) error
 	RejectAchievement(c *fiber.Ctx) error
 }
@@ -458,7 +468,7 @@ func (s *achievementService) CreateAchievement(c *fiber.Ctx) error {
 	if err == nil {
 		ext := filepath.Ext(file.Filename)
 		newFileName := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
-		
+
 		var subFolder string
 		lowerExt := strings.ToLower(ext)
 		switch lowerExt {
@@ -502,7 +512,7 @@ func (s *achievementService) CreateAchievement(c *fiber.Ctx) error {
 			Organizer:        req.Organizer,
 			EventDate:        eventDate,
 			MedalType:        req.MedalType,
-            // Mapping field lain...
+			// Mapping field lain bisa ditambahkan disini
 		},
 	}
 
@@ -542,7 +552,7 @@ func (s *achievementService) UpdateAchievement(c *fiber.Ctx) error {
 
 	var attachments []models.Attachment
 	file, err := c.FormFile("file")
-	
+
 	if err == nil {
 		ext := filepath.Ext(file.Filename)
 		newFileName := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
@@ -572,7 +582,7 @@ func (s *achievementService) UpdateAchievement(c *fiber.Ctx) error {
 		AchievementType: req.AchievementType,
 		Title:           req.Title,
 		Description:     req.Description,
-		Attachments:     attachments, 
+		Attachments:     attachments,
 		Details: models.AchievementDetails{
 			CompetitionName:  req.CompetitionName,
 			CompetitionLevel: req.CompetitionLevel,
@@ -695,104 +705,196 @@ func (s *achievementService) GetAdviseeAchievements(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"status": "success", "data": finalData})
 }
 
+// [FIX] GetAchievementByID dengan Security Check
 func (s *achievementService) GetAchievementByID(c *fiber.Ctx) error {
-    id := c.Params("id")
-    ref, err := s.repo.FindRefByID(id)
-    if err != nil {
-        return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"status": "error", "message": "Prestasi tidak ditemukan"})
-    }
-    mongoIDs := []string{ref.MongoAchievementID}
-    mongoDetails, err := s.repo.FindMongoDetails(mongoIDs)
-    if err != nil {
-        return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"status": "error", "message": "Gagal mengambil detail data"})
-    }
-    if detail, exists := mongoDetails[ref.MongoAchievementID]; exists {
-        ref.Detail = &detail
-    }
-    return c.JSON(fiber.Map{"status": "success", "data": ref})
+	id := c.Params("id")
+	userID := c.Locals("user_id").(uuid.UUID).String()
+
+	// Ambil data prestasi
+	ref, err := s.repo.FindRefByID(id)
+	if err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"status": "error", "message": "Prestasi tidak ditemukan"})
+	}
+
+	// --- SECURITY CHECK (Aturan 3 & 4) ---
+	// Cek role user berdasarkan keberadaan datanya di tabel mahasiswa/dosen
+	isAllowed := false
+
+	// 1. Cek apakah Mahasiswa & Pemilik
+	studentID, errMhs := s.repo.GetStudentIDByUserID(userID)
+	if errMhs == nil {
+		if ref.StudentID == studentID {
+			isAllowed = true
+		}
+	}
+
+	// 2. Cek apakah Dosen Wali & Bimbingannya
+	if !isAllowed {
+		advisorID, errDos := s.repo.GetAdvisorIDByUserID(userID)
+		if errDos == nil {
+			isAdvisee, _ := s.repo.IsAdvisee(advisorID, ref.StudentID)
+			if isAdvisee {
+				isAllowed = true
+			}
+		}
+	}
+
+	// 3. (Opsional) Jika Admin, bisa set isAllowed = true disini (Logic nanti Fase 2)
+	// Namun untuk Fase 1, kita fokus Mhs & Dosen
+
+	if !isAllowed {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"status": "error", "message": "Anda tidak memiliki hak akses untuk melihat prestasi ini"})
+	}
+	// -------------------------------------
+
+	mongoIDs := []string{ref.MongoAchievementID}
+	mongoDetails, err := s.repo.FindMongoDetails(mongoIDs)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"status": "error", "message": "Gagal mengambil detail data"})
+	}
+	if detail, exists := mongoDetails[ref.MongoAchievementID]; exists {
+		ref.Detail = &detail
+	}
+	return c.JSON(fiber.Map{"status": "success", "data": ref})
 }
 
+// [FIX] GetAchievementHistory dengan Security Check
 func (s *achievementService) GetAchievementHistory(c *fiber.Ctx) error {
-    id := c.Params("id")
-    ref, err := s.repo.FindRefByID(id)
-    if err != nil {
-        return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"status": "error", "message": "Prestasi tidak ditemukan"})
-    }
-    var history []fiber.Map
-    history = append(history, fiber.Map{
-        "status":    "draft",
-        "timestamp": ref.CreatedAt,
-        "note":      "Prestasi dibuat (Draft)",
-        "actor":     "Mahasiswa",
-    })
-    if ref.SubmittedAt != nil {
-        history = append(history, fiber.Map{
-            "status":    "submitted",
-            "timestamp": ref.SubmittedAt,
-            "note":      "Menunggu verifikasi Dosen Wali",
-            "actor":     "Mahasiswa",
-        })
-    }
-    if ref.VerifiedAt != nil {
-        note := "Prestasi telah diverifikasi"
-        if ref.Status == "rejected" {
-            note = "Prestasi ditolak: " + ref.RejectionNote
-        }
-        history = append(history, fiber.Map{
-            "status":    ref.Status, 
-            "timestamp": ref.VerifiedAt,
-            "note":      note,
-            "actor":     "Dosen Wali",
-        })
-    }
-    return c.JSON(fiber.Map{"status": "success", "data": history})
+	id := c.Params("id")
+	userID := c.Locals("user_id").(uuid.UUID).String()
+
+	ref, err := s.repo.FindRefByID(id)
+	if err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"status": "error", "message": "Prestasi tidak ditemukan"})
+	}
+
+	// --- SECURITY CHECK (Aturan 3 & 4) - Logic Sama dengan GetByID ---
+	isAllowed := false
+	studentID, errMhs := s.repo.GetStudentIDByUserID(userID)
+	if errMhs == nil && ref.StudentID == studentID {
+		isAllowed = true
+	}
+	if !isAllowed {
+		advisorID, errDos := s.repo.GetAdvisorIDByUserID(userID)
+		if errDos == nil {
+			isAdvisee, _ := s.repo.IsAdvisee(advisorID, ref.StudentID)
+			if isAdvisee {
+				isAllowed = true
+			}
+		}
+	}
+
+	if !isAllowed {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"status": "error", "message": "Akses ditolak"})
+	}
+	// -------------------------------------------------------------
+
+	var history []fiber.Map
+	history = append(history, fiber.Map{
+		"status":    "draft",
+		"timestamp": ref.CreatedAt,
+		"note":      "Prestasi dibuat (Draft)",
+		"actor":     "Mahasiswa",
+	})
+	if ref.SubmittedAt != nil {
+		history = append(history, fiber.Map{
+			"status":    "submitted",
+			"timestamp": ref.SubmittedAt,
+			"note":      "Menunggu verifikasi Dosen Wali",
+			"actor":     "Mahasiswa",
+		})
+	}
+	if ref.VerifiedAt != nil {
+		note := "Prestasi telah diverifikasi"
+		if ref.Status == "rejected" {
+			note = "Prestasi ditolak: " + ref.RejectionNote
+		}
+		history = append(history, fiber.Map{
+			"status":    ref.Status,
+			"timestamp": ref.VerifiedAt,
+			"note":      note,
+			"actor":     "Dosen Wali",
+		})
+	}
+	return c.JSON(fiber.Map{"status": "success", "data": history})
 }
 
 // --- 3. FEATURE: WORKFLOW VERIFICATION (Dosen Wali) ---
 
-// VerifyAchievement: Mengubah status menjadi 'verified' (FR-007)
 func (s *achievementService) VerifyAchievement(c *fiber.Ctx) error {
 	achievementID := c.Params("id")
 	userID := c.Locals("user_id").(uuid.UUID).String()
 
-	// Logic FR-007: Dosen approve, status jadi verified. Tidak wajib ada notes.
-	err := s.repo.UpdateStatus(achievementID, "verified", "", userID)
+	// 1. Ambil data prestasi
+	ref, err := s.repo.FindRefByID(achievementID)
+	if err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"status": "error", "message": "Prestasi tidak ditemukan"})
+	}
+
+	// 2. [SECURITY CHECK] Pastikan Dosen Memverifikasi Bimbingannya (Rule 3)
+	advisorID, err := s.repo.GetAdvisorIDByUserID(userID)
+	if err != nil {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"status": "error", "message": "Anda bukan dosen wali"})
+	}
+
+	isAdvisee, err := s.repo.IsAdvisee(advisorID, ref.StudentID)
+	if err != nil || !isAdvisee {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"status": "error", "message": "Anda tidak berhak memverifikasi mahasiswa ini"})
+	}
+
+	// 3. Proses Update
+	err = s.repo.UpdateStatus(achievementID, "verified", "", userID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"status": "error", "message": err.Error()})
 	}
 
 	return c.JSON(fiber.Map{
-		"status": "success",
+		"status":  "success",
 		"message": "Prestasi berhasil diverifikasi",
 	})
 }
 
-// RejectAchievement: Mengubah status menjadi 'rejected' dengan catatan (FR-008)
 func (s *achievementService) RejectAchievement(c *fiber.Ctx) error {
 	achievementID := c.Params("id")
 	userID := c.Locals("user_id").(uuid.UUID).String()
 
-	// Logic FR-008: Wajib ada rejection note
+	// 1. Ambil data prestasi
+	ref, err := s.repo.FindRefByID(achievementID)
+	if err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"status": "error", "message": "Prestasi tidak ditemukan"})
+	}
+
+	// 2. [SECURITY CHECK] Rule 3
+	advisorID, err := s.repo.GetAdvisorIDByUserID(userID)
+	if err != nil {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"status": "error", "message": "Anda bukan dosen wali"})
+	}
+
+	isAdvisee, err := s.repo.IsAdvisee(advisorID, ref.StudentID)
+	if err != nil || !isAdvisee {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"status": "error", "message": "Anda tidak berhak menolak prestasi mahasiswa ini"})
+	}
+
+	// 3. Validasi Notes
 	type RejectRequest struct {
 		Notes string `json:"notes" validate:"required"`
 	}
-
 	var req RejectRequest
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"status": "error", "message": "Format input salah"})
 	}
-
 	if strings.TrimSpace(req.Notes) == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"status": "error", "message": "Catatan penolakan wajib diisi"})
 	}
 
-	err := s.repo.UpdateStatus(achievementID, "rejected", req.Notes, userID)
+	// 4. Proses Update
+	err = s.repo.UpdateStatus(achievementID, "rejected", req.Notes, userID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"status": "error", "message": err.Error()})
 	}
 
 	return c.JSON(fiber.Map{
-		"status": "success",
+		"status":  "success",
 		"message": "Prestasi berhasil ditolak",
 	})
 }
