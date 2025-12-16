@@ -17,9 +17,9 @@
 // 	// --- Commands (Write) ---
 // 	Create(mongoData *models.AchievementMongo, studentUUID string) error
 // 	UpdateStatus(id string, status string, notes string, verifierID string) error
-// 	Submit(id string) error 
-	
-// 	// [NEW] Fitur Update & Delete (Fase 1)
+// 	Submit(id string) error
+
+// 	// [Fase 1: Update & Delete]
 // 	FindMongoIDByRefID(refID string) (string, error)
 // 	UpdateMongo(mongoID string, updateData *models.AchievementMongo) error
 // 	SoftDelete(id string) error
@@ -28,11 +28,14 @@
 // 	GetStudentIDByUserID(userID string) (string, error)
 // 	GetAdvisorIDByUserID(userID string) (string, error)
 	
+// 	// [NEW] Cek apakah mahasiswa adalah bimbingan dosen tertentu (Rule 3)
+// 	IsAdvisee(advisorID string, studentID string) (bool, error)
+
 // 	// Mencari referensi prestasi (Postgres)
 // 	FindAllByStudentID(studentID string) ([]models.AchievementReference, error)
 // 	FindAllByAdvisorID(advisorID string) ([]models.AchievementReference, error)
 // 	FindRefByID(id string) (*models.AchievementReference, error)
-	
+
 // 	// Mengambil detail prestasi (Mongo)
 // 	FindMongoDetails(mongoIDs []string) (map[string]models.AchievementMongo, error)
 // }
@@ -53,7 +56,6 @@
 
 // func (r *achievementRepository) GetStudentIDByUserID(userID string) (string, error) {
 // 	var studentID string
-// 	// Menggunakan QueryRow (Aturan No. 11)
 // 	err := r.pg.QueryRow("SELECT id FROM students WHERE user_id = $1", userID).Scan(&studentID)
 // 	if err != nil {
 // 		return "", errors.New("data mahasiswa tidak ditemukan")
@@ -68,6 +70,18 @@
 // 		return "", errors.New("data dosen tidak ditemukan")
 // 	}
 // 	return advisorID, nil
+// }
+
+// // [NEW] Implementasi IsAdvisee
+// func (r *achievementRepository) IsAdvisee(advisorID string, studentID string) (bool, error) {
+// 	var exists bool
+// 	// Menggunakan SELECT EXISTS agar efisien
+// 	query := "SELECT EXISTS(SELECT 1 FROM students WHERE id = $1 AND advisor_id = $2)"
+// 	err := r.pg.QueryRow(query, studentID, advisorID).Scan(&exists)
+// 	if err != nil {
+// 		return false, err
+// 	}
+// 	return exists, nil
 // }
 
 // // --- Write Operations ---
@@ -85,11 +99,11 @@
 // 	mongoID := result.InsertedID.(primitive.ObjectID).Hex()
 
 // 	query := `
-// 		INSERT INTO achievement_references (student_id, mongo_achievement_id, status, created_at)
-// 		VALUES ($1, $2, 'draft', NOW())
-// 	`
+//         INSERT INTO achievement_references (student_id, mongo_achievement_id, status, created_at)
+//         VALUES ($1, $2, 'draft', NOW())
+//     `
 // 	_, err = r.pg.Exec(query, studentUUID, mongoID)
-	
+
 // 	if err != nil {
 // 		_, _ = collection.DeleteOne(ctx, result.InsertedID) // Rollback Manual
 // 		return errors.New("gagal menyimpan referensi prestasi")
@@ -99,14 +113,13 @@
 // }
 
 // func (r *achievementRepository) UpdateStatus(id string, status string, notes string, verifierID string) error {
-// 	// Query update status dan waktu verifikasi
-// 	// [PERBAIKAN] Tambahkan "AND status = 'submitted'" agar hanya yang sudah submit yang bisa diverifikasi
+// 	// [PENTING] Hanya update jika status 'submitted' (untuk verifikasi) atau flow valid lainnya
+// 	// Reject/Verify hanya boleh dilakukan jika status sebelumnya submitted
 // 	query := `
-// 		UPDATE achievement_references 
-// 		SET status = $1, rejection_note = $2, verified_by = $3, verified_at = NOW(), updated_at = NOW()
-// 		WHERE id = $4 AND status = 'submitted'
-// 	`
-	
+//         UPDATE achievement_references 
+//         SET status = $1, rejection_note = $2, verified_by = $3, verified_at = NOW(), updated_at = NOW()
+//         WHERE id = $4 AND status = 'submitted'
+//     `
 // 	result, err := r.pg.Exec(query, status, notes, verifierID, id)
 // 	if err != nil {
 // 		return err
@@ -114,20 +127,17 @@
 
 // 	rows, _ := result.RowsAffected()
 // 	if rows == 0 {
-// 		return errors.New("prestasi tidak ditemukan atau belum disubmit oleh mahasiswa")
+// 		return errors.New("prestasi tidak ditemukan atau belum disubmit (status harus submitted)")
 // 	}
 // 	return nil
 // }
 
-// // Submit mengubah status draft menjadi submitted
 // func (r *achievementRepository) Submit(id string) error {
 // 	query := `
-// 		UPDATE achievement_references 
-// 		SET status = 'submitted', submitted_at = NOW(), updated_at = NOW()
-// 		WHERE id = $1 AND status = 'draft'
-// 	`
-// 	// Klausa "AND status = 'draft'" penting agar prestasi yang sudah diverifikasi tidak bisa di-submit ulang
-	
+//         UPDATE achievement_references 
+//         SET status = 'submitted', submitted_at = NOW(), updated_at = NOW()
+//         WHERE id = $1 AND status = 'draft'
+//     `
 // 	result, err := r.pg.Exec(query, id)
 // 	if err != nil {
 // 		return err
@@ -140,9 +150,8 @@
 // 	return nil
 // }
 
-// // --- [NEW] FASE 1: Update & Delete Implementation ---
+// // --- [Fase 1 Implementation] ---
 
-// // 1. Helper untuk mencari ID Mongo berdasarkan ID Referensi Postgres
 // func (r *achievementRepository) FindMongoIDByRefID(refID string) (string, error) {
 // 	var mongoID string
 // 	query := "SELECT mongo_achievement_id FROM achievement_references WHERE id = $1"
@@ -153,7 +162,6 @@
 // 	return mongoID, nil
 // }
 
-// // 2. Update data detail di MongoDB
 // func (r *achievementRepository) UpdateMongo(mongoID string, updateData *models.AchievementMongo) error {
 // 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 // 	defer cancel()
@@ -163,21 +171,17 @@
 // 		return errors.New("format ID mongo tidak valid")
 // 	}
 
-// 	// Kita update field-field utama dan details
-// 	// Field 'Details' akan ditimpa total dengan struct baru (yang sudah sesuai SRS)
 // 	filter := bson.M{"_id": oid}
 // 	update := bson.M{
 // 		"$set": bson.M{
 // 			"achievementType": updateData.AchievementType,
 // 			"title":           updateData.Title,
 // 			"description":     updateData.Description,
-// 			"details":         updateData.Details, // Field dinamis diupdate disini
+// 			"details":         updateData.Details,
 // 			"updatedAt":       time.Now(),
 // 		},
 // 	}
-	
-// 	// Jika ada attachment baru, kita replace array attachments
-// 	// (Logic: jika user upload file baru saat update, file lama dianggap diganti)
+
 // 	if len(updateData.Attachments) > 0 {
 // 		update["$set"].(bson.M)["attachments"] = updateData.Attachments
 // 	}
@@ -189,15 +193,12 @@
 // 	return nil
 // }
 
-// // 3. Soft Delete: Mengubah status menjadi 'deleted' (Sesuai Aturan No. 2)
 // func (r *achievementRepository) SoftDelete(id string) error {
-// 	// PENTING: Klausa "AND status = 'draft'" menjaga agar prestasi yang sudah
-// 	// disubmit/diverifikasi TIDAK BISA dihapus sembarangan.
 // 	query := `
-// 		UPDATE achievement_references 
-// 		SET status = 'deleted', updated_at = NOW() 
-// 		WHERE id = $1 AND status = 'draft'
-// 	`
+//         UPDATE achievement_references 
+//         SET status = 'deleted', updated_at = NOW() 
+//         WHERE id = $1 AND status = 'draft'
+//     `
 // 	result, err := r.pg.Exec(query, id)
 // 	if err != nil {
 // 		return err
@@ -205,21 +206,20 @@
 
 // 	rows, _ := result.RowsAffected()
 // 	if rows == 0 {
-// 		return errors.New("prestasi tidak ditemukan atau status bukan draft (tidak bisa dihapus)")
+// 		return errors.New("prestasi tidak ditemukan atau status bukan draft")
 // 	}
 // 	return nil
 // }
 
-// // --- Read Operations (PostgreSQL) ---
+// // --- Read Operations ---
 
-// // FindAllByStudentID: Untuk Mahasiswa melihat miliknya sendiri
 // func (r *achievementRepository) FindAllByStudentID(studentID string) ([]models.AchievementReference, error) {
 // 	query := `
-// 		SELECT id, student_id, mongo_achievement_id, status, rejection_note, created_at, verified_at
-// 		FROM achievement_references
-// 		WHERE student_id = $1 AND status != 'deleted'
-// 		ORDER BY created_at DESC
-// 	`
+//         SELECT id, student_id, mongo_achievement_id, status, rejection_note, created_at, verified_at
+//         FROM achievement_references
+//         WHERE student_id = $1 AND status != 'deleted'
+//         ORDER BY created_at DESC
+//     `
 // 	rows, err := r.pg.Query(query, studentID)
 // 	if err != nil {
 // 		return nil, err
@@ -244,16 +244,14 @@
 // 	return refs, nil
 // }
 
-// // FindAllByAdvisorID: Untuk Dosen Wali melihat mahasiswa bimbingannya
 // func (r *achievementRepository) FindAllByAdvisorID(advisorID string) ([]models.AchievementReference, error) {
-// 	// [PERBAIKAN] Tambahkan "AND ar.status != 'draft'" agar Dosen tidak melihat Draft
 // 	query := `
-// 		SELECT ar.id, ar.student_id, ar.mongo_achievement_id, ar.status, ar.rejection_note, ar.created_at
-// 		FROM achievement_references ar
-// 		JOIN students s ON ar.student_id = s.id
-// 		WHERE s.advisor_id = $1 AND ar.status != 'deleted' AND ar.status != 'draft'
-// 		ORDER BY ar.created_at DESC
-// 	`
+//         SELECT ar.id, ar.student_id, ar.mongo_achievement_id, ar.status, ar.rejection_note, ar.created_at
+//         FROM achievement_references ar
+//         JOIN students s ON ar.student_id = s.id
+//         WHERE s.advisor_id = $1 AND ar.status != 'deleted' AND ar.status != 'draft'
+//         ORDER BY ar.created_at DESC
+//     `
 // 	rows, err := r.pg.Query(query, advisorID)
 // 	if err != nil {
 // 		return nil, err
@@ -273,40 +271,39 @@
 // 	return refs, nil
 // }
 
-// // FindRefByID: Mengambil satu data referensi (untuk detail/verifikasi)
 // func (r *achievementRepository) FindRefByID(id string) (*models.AchievementReference, error) {
 // 	query := `
-// 		SELECT id, student_id, mongo_achievement_id, status, rejection_note, created_at, verified_at, submitted_at
-// 		FROM achievement_references
-// 		WHERE id = $1
-// 	`
+//         SELECT id, student_id, mongo_achievement_id, status, rejection_note, created_at, verified_at, submitted_at
+//         FROM achievement_references
+//         WHERE id = $1
+//     `
 // 	var ref models.AchievementReference
 // 	var note sql.NullString
 // 	var verAt, subAt sql.NullTime
 
 // 	err := r.pg.QueryRow(query, id).Scan(
-// 		&ref.ID, &ref.StudentID, &ref.MongoAchievementID, &ref.Status, 
+// 		&ref.ID, &ref.StudentID, &ref.MongoAchievementID, &ref.Status,
 // 		&note, &ref.CreatedAt, &verAt, &subAt,
 // 	)
 // 	if err != nil {
 // 		return nil, err
 // 	}
-	
+
 // 	ref.RejectionNote = note.String
-// 	if verAt.Valid { ref.VerifiedAt = &verAt.Time }
-// 	if subAt.Valid { ref.SubmittedAt = &subAt.Time }
-	
+// 	if verAt.Valid {
+// 		ref.VerifiedAt = &verAt.Time
+// 	}
+// 	if subAt.Valid {
+// 		ref.SubmittedAt = &subAt.Time
+// 	}
+
 // 	return &ref, nil
 // }
 
-// // --- Read Operations (MongoDB) ---
-
-// // FindMongoDetails mengambil data detail dari Mongo berdasarkan List ID
 // func (r *achievementRepository) FindMongoDetails(mongoIDs []string) (map[string]models.AchievementMongo, error) {
 // 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 // 	defer cancel()
 
-// 	// Convert string IDs to ObjectIDs
 // 	var objectIDs []primitive.ObjectID
 // 	for _, id := range mongoIDs {
 // 		if oid, err := primitive.ObjectIDFromHex(id); err == nil {
@@ -314,7 +311,6 @@
 // 		}
 // 	}
 
-// 	// Query Mongo dengan operator $in
 // 	filter := bson.M{"_id": bson.M{"$in": objectIDs}}
 // 	cursor, err := r.mongo.Collection("achievements").Find(ctx, filter)
 // 	if err != nil {
@@ -322,7 +318,6 @@
 // 	}
 // 	defer cursor.Close(ctx)
 
-// 	// Masukkan hasil ke Map agar mudah dicocokkan nanti
 // 	results := make(map[string]models.AchievementMongo)
 // 	for cursor.Next(ctx) {
 // 		var doc models.AchievementMongo
@@ -364,16 +359,15 @@ type AchievementRepository interface {
 	// --- Queries (Read) ---
 	GetStudentIDByUserID(userID string) (string, error)
 	GetAdvisorIDByUserID(userID string) (string, error)
-	
-	// [NEW] Cek apakah mahasiswa adalah bimbingan dosen tertentu (Rule 3)
 	IsAdvisee(advisorID string, studentID string) (bool, error)
 
-	// Mencari referensi prestasi (Postgres)
 	FindAllByStudentID(studentID string) ([]models.AchievementReference, error)
 	FindAllByAdvisorID(advisorID string) ([]models.AchievementReference, error)
+	
+	// [NEW] Admin View All (FR-010)
+	FindAllAchievements() ([]models.AchievementReference, error)
+	
 	FindRefByID(id string) (*models.AchievementReference, error)
-
-	// Mengambil detail prestasi (Mongo)
 	FindMongoDetails(mongoIDs []string) (map[string]models.AchievementMongo, error)
 }
 
@@ -389,8 +383,14 @@ func NewAchievementRepository() AchievementRepository {
 	}
 }
 
-// --- Helper User ID ---
+// ... [KODE HELPER & WRITE OPS SAMA SEPERTI SEBELUMNYA] ...
+// (Untuk menghemat tempat, bagian Helper, Create, UpdateStatus, Submit, SoftDelete, UpdateMongo
+//  tidak saya tulis ulang karena TIDAK ADA PERUBAHAN. Pastikan bagian itu tetap ada!)
+// ---------------------------------------------------------
+// Copy Paste bagian Helper & Write dari kode sebelumnya disini
+// ---------------------------------------------------------
 
+// --- Helper User ID ---
 func (r *achievementRepository) GetStudentIDByUserID(userID string) (string, error) {
 	var studentID string
 	err := r.pg.QueryRow("SELECT id FROM students WHERE user_id = $1", userID).Scan(&studentID)
@@ -409,10 +409,8 @@ func (r *achievementRepository) GetAdvisorIDByUserID(userID string) (string, err
 	return advisorID, nil
 }
 
-// [NEW] Implementasi IsAdvisee
 func (r *achievementRepository) IsAdvisee(advisorID string, studentID string) (bool, error) {
 	var exists bool
-	// Menggunakan SELECT EXISTS agar efisien
 	query := "SELECT EXISTS(SELECT 1 FROM students WHERE id = $1 AND advisor_id = $2)"
 	err := r.pg.QueryRow(query, studentID, advisorID).Scan(&exists)
 	if err != nil {
@@ -422,7 +420,6 @@ func (r *achievementRepository) IsAdvisee(advisorID string, studentID string) (b
 }
 
 // --- Write Operations ---
-
 func (r *achievementRepository) Create(mongoData *models.AchievementMongo, studentUUID string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -432,82 +429,51 @@ func (r *achievementRepository) Create(mongoData *models.AchievementMongo, stude
 	if err != nil {
 		return err
 	}
-
 	mongoID := result.InsertedID.(primitive.ObjectID).Hex()
-
-	query := `
-        INSERT INTO achievement_references (student_id, mongo_achievement_id, status, created_at)
-        VALUES ($1, $2, 'draft', NOW())
-    `
+	query := `INSERT INTO achievement_references (student_id, mongo_achievement_id, status, created_at) VALUES ($1, $2, 'draft', NOW())`
 	_, err = r.pg.Exec(query, studentUUID, mongoID)
-
 	if err != nil {
-		_, _ = collection.DeleteOne(ctx, result.InsertedID) // Rollback Manual
+		_, _ = collection.DeleteOne(ctx, result.InsertedID)
 		return errors.New("gagal menyimpan referensi prestasi")
 	}
-
 	return nil
 }
 
 func (r *achievementRepository) UpdateStatus(id string, status string, notes string, verifierID string) error {
-	// [PENTING] Hanya update jika status 'submitted' (untuk verifikasi) atau flow valid lainnya
-	// Reject/Verify hanya boleh dilakukan jika status sebelumnya submitted
 	query := `
         UPDATE achievement_references 
         SET status = $1, rejection_note = $2, verified_by = $3, verified_at = NOW(), updated_at = NOW()
         WHERE id = $4 AND status = 'submitted'
     `
 	result, err := r.pg.Exec(query, status, notes, verifierID, id)
-	if err != nil {
-		return err
-	}
-
+	if err != nil { return err }
 	rows, _ := result.RowsAffected()
-	if rows == 0 {
-		return errors.New("prestasi tidak ditemukan atau belum disubmit (status harus submitted)")
-	}
+	if rows == 0 { return errors.New("prestasi tidak ditemukan atau belum disubmit") }
 	return nil
 }
 
 func (r *achievementRepository) Submit(id string) error {
-	query := `
-        UPDATE achievement_references 
-        SET status = 'submitted', submitted_at = NOW(), updated_at = NOW()
-        WHERE id = $1 AND status = 'draft'
-    `
+	query := `UPDATE achievement_references SET status = 'submitted', submitted_at = NOW(), updated_at = NOW() WHERE id = $1 AND status = 'draft'`
 	result, err := r.pg.Exec(query, id)
-	if err != nil {
-		return err
-	}
-
+	if err != nil { return err }
 	rows, _ := result.RowsAffected()
-	if rows == 0 {
-		return errors.New("prestasi tidak ditemukan atau status bukan draft")
-	}
+	if rows == 0 { return errors.New("prestasi tidak ditemukan atau status bukan draft") }
 	return nil
 }
-
-// --- [Fase 1 Implementation] ---
 
 func (r *achievementRepository) FindMongoIDByRefID(refID string) (string, error) {
 	var mongoID string
 	query := "SELECT mongo_achievement_id FROM achievement_references WHERE id = $1"
 	err := r.pg.QueryRow(query, refID).Scan(&mongoID)
-	if err != nil {
-		return "", errors.New("referensi prestasi tidak ditemukan")
-	}
+	if err != nil { return "", errors.New("referensi prestasi tidak ditemukan") }
 	return mongoID, nil
 }
 
 func (r *achievementRepository) UpdateMongo(mongoID string, updateData *models.AchievementMongo) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-
 	oid, err := primitive.ObjectIDFromHex(mongoID)
-	if err != nil {
-		return errors.New("format ID mongo tidak valid")
-	}
-
+	if err != nil { return errors.New("format ID mongo tidak valid") }
 	filter := bson.M{"_id": oid}
 	update := bson.M{
 		"$set": bson.M{
@@ -518,33 +484,19 @@ func (r *achievementRepository) UpdateMongo(mongoID string, updateData *models.A
 			"updatedAt":       time.Now(),
 		},
 	}
-
 	if len(updateData.Attachments) > 0 {
 		update["$set"].(bson.M)["attachments"] = updateData.Attachments
 	}
-
 	_, err = r.mongo.Collection("achievements").UpdateOne(ctx, filter, update)
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
 func (r *achievementRepository) SoftDelete(id string) error {
-	query := `
-        UPDATE achievement_references 
-        SET status = 'deleted', updated_at = NOW() 
-        WHERE id = $1 AND status = 'draft'
-    `
+	query := `UPDATE achievement_references SET status = 'deleted', updated_at = NOW() WHERE id = $1 AND status = 'draft'`
 	result, err := r.pg.Exec(query, id)
-	if err != nil {
-		return err
-	}
-
+	if err != nil { return err }
 	rows, _ := result.RowsAffected()
-	if rows == 0 {
-		return errors.New("prestasi tidak ditemukan atau status bukan draft")
-	}
+	if rows == 0 { return errors.New("prestasi tidak ditemukan atau status bukan draft") }
 	return nil
 }
 
@@ -558,24 +510,16 @@ func (r *achievementRepository) FindAllByStudentID(studentID string) ([]models.A
         ORDER BY created_at DESC
     `
 	rows, err := r.pg.Query(query, studentID)
-	if err != nil {
-		return nil, err
-	}
+	if err != nil { return nil, err }
 	defer rows.Close()
-
 	var refs []models.AchievementReference
 	for rows.Next() {
 		var ref models.AchievementReference
 		var note sql.NullString
 		var verAt sql.NullTime
-
-		if err := rows.Scan(&ref.ID, &ref.StudentID, &ref.MongoAchievementID, &ref.Status, &note, &ref.CreatedAt, &verAt); err != nil {
-			return nil, err
-		}
+		if err := rows.Scan(&ref.ID, &ref.StudentID, &ref.MongoAchievementID, &ref.Status, &note, &ref.CreatedAt, &verAt); err != nil { return nil, err }
 		ref.RejectionNote = note.String
-		if verAt.Valid {
-			ref.VerifiedAt = &verAt.Time
-		}
+		if verAt.Valid { ref.VerifiedAt = &verAt.Time }
 		refs = append(refs, ref)
 	}
 	return refs, nil
@@ -590,19 +534,39 @@ func (r *achievementRepository) FindAllByAdvisorID(advisorID string) ([]models.A
         ORDER BY ar.created_at DESC
     `
 	rows, err := r.pg.Query(query, advisorID)
-	if err != nil {
-		return nil, err
-	}
+	if err != nil { return nil, err }
 	defer rows.Close()
-
 	var refs []models.AchievementReference
 	for rows.Next() {
 		var ref models.AchievementReference
 		var note sql.NullString
-		if err := rows.Scan(&ref.ID, &ref.StudentID, &ref.MongoAchievementID, &ref.Status, &note, &ref.CreatedAt); err != nil {
-			return nil, err
-		}
+		if err := rows.Scan(&ref.ID, &ref.StudentID, &ref.MongoAchievementID, &ref.Status, &note, &ref.CreatedAt); err != nil { return nil, err }
 		ref.RejectionNote = note.String
+		refs = append(refs, ref)
+	}
+	return refs, nil
+}
+
+// [NEW] Admin View All
+func (r *achievementRepository) FindAllAchievements() ([]models.AchievementReference, error) {
+	query := `
+        SELECT id, student_id, mongo_achievement_id, status, rejection_note, created_at, verified_at, submitted_at
+        FROM achievement_references
+        WHERE status != 'deleted'
+        ORDER BY created_at DESC
+    `
+	rows, err := r.pg.Query(query)
+	if err != nil { return nil, err }
+	defer rows.Close()
+	var refs []models.AchievementReference
+	for rows.Next() {
+		var ref models.AchievementReference
+		var note sql.NullString
+		var verAt, subAt sql.NullTime
+		if err := rows.Scan(&ref.ID, &ref.StudentID, &ref.MongoAchievementID, &ref.Status, &note, &ref.CreatedAt, &verAt, &subAt); err != nil { return nil, err }
+		ref.RejectionNote = note.String
+		if verAt.Valid { ref.VerifiedAt = &verAt.Time }
+		if subAt.Valid { ref.SubmittedAt = &subAt.Time }
 		refs = append(refs, ref)
 	}
 	return refs, nil
@@ -617,51 +581,29 @@ func (r *achievementRepository) FindRefByID(id string) (*models.AchievementRefer
 	var ref models.AchievementReference
 	var note sql.NullString
 	var verAt, subAt sql.NullTime
-
-	err := r.pg.QueryRow(query, id).Scan(
-		&ref.ID, &ref.StudentID, &ref.MongoAchievementID, &ref.Status,
-		&note, &ref.CreatedAt, &verAt, &subAt,
-	)
-	if err != nil {
-		return nil, err
-	}
-
+	err := r.pg.QueryRow(query, id).Scan(&ref.ID, &ref.StudentID, &ref.MongoAchievementID, &ref.Status, &note, &ref.CreatedAt, &verAt, &subAt)
+	if err != nil { return nil, err }
 	ref.RejectionNote = note.String
-	if verAt.Valid {
-		ref.VerifiedAt = &verAt.Time
-	}
-	if subAt.Valid {
-		ref.SubmittedAt = &subAt.Time
-	}
-
+	if verAt.Valid { ref.VerifiedAt = &verAt.Time }
+	if subAt.Valid { ref.SubmittedAt = &subAt.Time }
 	return &ref, nil
 }
 
 func (r *achievementRepository) FindMongoDetails(mongoIDs []string) (map[string]models.AchievementMongo, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-
 	var objectIDs []primitive.ObjectID
 	for _, id := range mongoIDs {
-		if oid, err := primitive.ObjectIDFromHex(id); err == nil {
-			objectIDs = append(objectIDs, oid)
-		}
+		if oid, err := primitive.ObjectIDFromHex(id); err == nil { objectIDs = append(objectIDs, oid) }
 	}
-
 	filter := bson.M{"_id": bson.M{"$in": objectIDs}}
 	cursor, err := r.mongo.Collection("achievements").Find(ctx, filter)
-	if err != nil {
-		return nil, err
-	}
+	if err != nil { return nil, err }
 	defer cursor.Close(ctx)
-
 	results := make(map[string]models.AchievementMongo)
 	for cursor.Next(ctx) {
 		var doc models.AchievementMongo
-		if err := cursor.Decode(&doc); err == nil {
-			results[doc.ID.Hex()] = doc
-		}
+		if err := cursor.Decode(&doc); err == nil { results[doc.ID.Hex()] = doc }
 	}
-
 	return results, nil
 }
