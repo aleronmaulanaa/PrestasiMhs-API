@@ -86,10 +86,12 @@ import (
 	"PrestasiMhs-API/app/repositories"
 	"PrestasiMhs-API/utils"
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 )
 
 type AuthService interface {
 	Login(c *fiber.Ctx) error
+	GetProfile(c *fiber.Ctx) error // [NEW]
 }
 
 type authService struct {
@@ -152,5 +154,21 @@ func (s *authService) Login(c *fiber.Ctx) error {
 		"status":  "success",
 		"message": "Login berhasil",
 		"data":    response,
+	})
+}
+
+func (s *authService) GetProfile(c *fiber.Ctx) error {
+	// KOREKSI: Ambil sebagai uuid.UUID dulu, baru convert ke String
+	userID := c.Locals("user_id").(uuid.UUID).String()
+
+	// Panggil Repository (pastikan Anda sudah update auth_repository.go di langkah sebelumnya)
+	user, err := s.repo.GetUserDetail(userID)
+	if err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"status": "error", "message": "User tidak ditemukan"})
+	}
+
+	return c.JSON(fiber.Map{
+		"status": "success",
+		"data":   user,
 	})
 }

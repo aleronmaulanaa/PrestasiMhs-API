@@ -11,6 +11,7 @@ type AuthRepository interface {
 	FindByUsername(username string) (*models.User, error)
 	// Kita siapkan fungsi CreateUser untuk nanti membuat Admin pertama kali
 	CreateUser(user *models.User) error
+	GetUserDetail(userID string) (*models.User, error) // [NEW]
 }
 
 type authRepository struct {
@@ -72,4 +73,20 @@ func (r *authRepository) CreateUser(user *models.User) error {
 	).Scan(&user.ID)
 
 	return err
+}
+
+// Tambahkan Implementasi
+func (r *authRepository) GetUserDetail(userID string) (*models.User, error) {
+	query := `
+		SELECT u.id, u.username, u.email, u.full_name, r.name as role_name, u.is_active, u.created_at
+		FROM users u
+		JOIN roles r ON u.role_id = r.id
+		WHERE u.id = $1
+	`
+	var u models.User
+	err := r.db.QueryRow(query, userID).Scan(&u.ID, &u.Username, &u.Email, &u.FullName, &u.RoleName, &u.IsActive, &u.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &u, nil
 }

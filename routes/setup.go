@@ -10,71 +10,52 @@
 // func SetupRoutes(app *fiber.App) {
 // 	api := app.Group("/api/v1")
 
-// 	// ============================================
-// 	// 1. DEPENDENCY INJECTION 
-// 	// ============================================
-	
+// 	// Injection
 // 	authRepo := repositories.NewAuthRepository()
 // 	authService := services.NewAuthService(authRepo)
-
 // 	userRepo := repositories.NewUserRepository()
 // 	userService := services.NewUserService(userRepo)
-
 // 	achievementRepo := repositories.NewAchievementRepository()
 // 	achievementService := services.NewAchievementService(achievementRepo)
 
-// 	// ============================================
-// 	// 2. ROUTE DEFINITIONS
-// 	// ============================================
-
-// 	// --- Public ---
-// 	auth := api.Group("/auth")
-// 	auth.Post("/login", authService.Login)
-
-// 	// --- Protected ---
+// 	// --- Routes ---
 	
-// 	// A. User Management (Admin Only - SRS 5.2 & 5.5)
+// 	api.Post("/auth/login", authService.Login)
+
+// 	// A. User Management (Admin)
 // 	users := api.Group("/users", middleware.Protected(), middleware.RoleMiddleware("Admin"))
-// 	users.Get("/", userService.GetAllUsers)         // List All Users
-// 	users.Delete("/:id", userService.DeleteUser)    // Delete User
+// 	users.Get("/", userService.GetAllUsers)
+// 	users.Get("/:id", userService.GetUserByID)       // [NEW]
+// 	users.Put("/:id", userService.UpdateUser)        // [NEW]
+// 	users.Put("/:id/role", userService.ChangePassword) // [NEW] (Mapping Update Role/Password)
+// 	users.Delete("/:id", userService.DeleteUser)
 // 	users.Post("/lecturers", userService.RegisterLecturer)
 // 	users.Post("/students", userService.RegisterStudent)
 
-// 	// Relations Management (Admin Only)
+// 	// Relations
 // 	students := api.Group("/students", middleware.Protected(), middleware.RoleMiddleware("Admin"))
-// 	students.Get("/", userService.GetAllStudents)           // List Students
-// 	students.Put("/:id/advisor", userService.AssignAdvisor) // Assign Dosen Wali
-
+// 	students.Get("/", userService.GetAllStudents)
+// 	students.Put("/:id/advisor", userService.AssignAdvisor)
 // 	lecturers := api.Group("/lecturers", middleware.Protected(), middleware.RoleMiddleware("Admin"))
-// 	lecturers.Get("/", userService.GetAllLecturers)         // List Lecturers
+// 	lecturers.Get("/", userService.GetAllLecturers)
 
 // 	// B. Achievement Routes
 // 	achievements := api.Group("/achievements", middleware.Protected())
 	
-// 	// --- 1. STATIC ROUTES (Harus ditaruh DI ATAS route /:id) ---
+// 	// [NEW] Admin View All
+// 	achievements.Get("/", middleware.RoleMiddleware("Admin"), achievementService.GetAllAchievements)
 	
-// 	// Upload (Create)
+// 	// Static
 // 	achievements.Post("/", middleware.RoleMiddleware("Mahasiswa"), achievementService.CreateAchievement)
-	
-// 	// List Milik Mahasiswa Sendiri
 // 	achievements.Get("/my", middleware.RoleMiddleware("Mahasiswa"), achievementService.GetMyAchievements)
-	
-// 	// [FIX] List Bimbingan Dosen Wali (Dipindahkan ke sini agar tidak tertutup oleh /:id)
 // 	achievements.Get("/advisees", middleware.RoleMiddleware("Dosen Wali"), achievementService.GetAdviseeAchievements)
 	
-// 	// --- 2. DYNAMIC ROUTES (/:id) (Ditaruh DI BAWAH) ---
-// 	// Karena /:id bersifat wildcard, dia akan menangkap apa saja jika ditaruh paling atas.
-	
-// 	// Detail & History
+// 	// Dynamic
 // 	achievements.Get("/:id", achievementService.GetAchievementByID)
 // 	achievements.Get("/:id/history", achievementService.GetAchievementHistory)
-
-// 	// Actions (Update, Delete, Submit)
 // 	achievements.Put("/:id", middleware.RoleMiddleware("Mahasiswa"), achievementService.UpdateAchievement)
 // 	achievements.Delete("/:id", middleware.RoleMiddleware("Mahasiswa"), achievementService.DeleteAchievement)
 // 	achievements.Post("/:id/submit", middleware.RoleMiddleware("Mahasiswa"), achievementService.SubmitAchievement)
-	
-// 	// Verify & Reject Actions
 // 	achievements.Post("/:id/verify", middleware.RoleMiddleware("Dosen Wali"), achievementService.VerifyAchievement)
 // 	achievements.Post("/:id/reject", middleware.RoleMiddleware("Dosen Wali"), achievementService.RejectAchievement)
 // }
@@ -92,47 +73,65 @@ import (
 func SetupRoutes(app *fiber.App) {
 	api := app.Group("/api/v1")
 
-	// Injection
+	// ============================================
+	// 1. DEPENDENCY INJECTION 
+	// ============================================
+
+	// Auth & User
 	authRepo := repositories.NewAuthRepository()
 	authService := services.NewAuthService(authRepo)
 	userRepo := repositories.NewUserRepository()
 	userService := services.NewUserService(userRepo)
+
+	// Achievement
 	achievementRepo := repositories.NewAchievementRepository()
 	achievementService := services.NewAchievementService(achievementRepo)
 
-	// --- Routes ---
-	
-	api.Post("/auth/login", authService.Login)
+	// [NEW FASE 3] Reporting
+	reportRepo := repositories.NewReportRepository()
+	reportService := services.NewReportService(reportRepo)
 
-	// A. User Management (Admin)
+	// ============================================
+	// 2. ROUTE DEFINITIONS
+	// ============================================
+
+	// --- Auth Routes ---
+	auth := api.Group("/auth")
+	auth.Post("/login", authService.Login)
+	
+	// [NEW FASE 3] Profile (User bisa melihat data dirinya sendiri)
+	auth.Get("/profile", middleware.Protected(), authService.GetProfile)
+
+	// --- A. User Management (Admin Only) ---
 	users := api.Group("/users", middleware.Protected(), middleware.RoleMiddleware("Admin"))
 	users.Get("/", userService.GetAllUsers)
-	users.Get("/:id", userService.GetUserByID)       // [NEW]
-	users.Put("/:id", userService.UpdateUser)        // [NEW]
-	users.Put("/:id/role", userService.ChangePassword) // [NEW] (Mapping Update Role/Password)
+	users.Get("/:id", userService.GetUserByID)         
+	users.Put("/:id", userService.UpdateUser)          
+	users.Put("/:id/role", userService.ChangePassword) 
 	users.Delete("/:id", userService.DeleteUser)
 	users.Post("/lecturers", userService.RegisterLecturer)
 	users.Post("/students", userService.RegisterStudent)
 
-	// Relations
+	// --- Relations Management (Admin Only) ---
 	students := api.Group("/students", middleware.Protected(), middleware.RoleMiddleware("Admin"))
 	students.Get("/", userService.GetAllStudents)
 	students.Put("/:id/advisor", userService.AssignAdvisor)
+	
 	lecturers := api.Group("/lecturers", middleware.Protected(), middleware.RoleMiddleware("Admin"))
 	lecturers.Get("/", userService.GetAllLecturers)
 
-	// B. Achievement Routes
+	// --- B. Achievement Routes ---
 	achievements := api.Group("/achievements", middleware.Protected())
 	
-	// [NEW] Admin View All
+	// Admin View All
 	achievements.Get("/", middleware.RoleMiddleware("Admin"), achievementService.GetAllAchievements)
 	
-	// Static
+	// Static Routes
 	achievements.Post("/", middleware.RoleMiddleware("Mahasiswa"), achievementService.CreateAchievement)
 	achievements.Get("/my", middleware.RoleMiddleware("Mahasiswa"), achievementService.GetMyAchievements)
 	achievements.Get("/advisees", middleware.RoleMiddleware("Dosen Wali"), achievementService.GetAdviseeAchievements)
 	
-	// Dynamic
+	// Dynamic Routes (/:id)
 	achievements.Get("/:id", achievementService.GetAchievementByID)
 	achievements.Get("/:id/history", achievementService.GetAchievementHistory)
 	achievements.Put("/:id", middleware.RoleMiddleware("Mahasiswa"), achievementService.UpdateAchievement)
@@ -140,4 +139,11 @@ func SetupRoutes(app *fiber.App) {
 	achievements.Post("/:id/submit", middleware.RoleMiddleware("Mahasiswa"), achievementService.SubmitAchievement)
 	achievements.Post("/:id/verify", middleware.RoleMiddleware("Dosen Wali"), achievementService.VerifyAchievement)
 	achievements.Post("/:id/reject", middleware.RoleMiddleware("Dosen Wali"), achievementService.RejectAchievement)
+
+	// --- [NEW FASE 3] Report Routes ---
+	reports := api.Group("/reports", middleware.Protected())
+	
+	// Dashboard Statistics (Admin Only)
+	// Jika Dosen Wali juga butuh akses, pastikan middleware Anda support multiple roles
+	reports.Get("/statistics", middleware.RoleMiddleware("Admin"), reportService.GetDashboardStatistics)
 }
