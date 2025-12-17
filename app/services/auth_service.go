@@ -104,6 +104,17 @@ func NewAuthService(repo repositories.AuthRepository) AuthService {
 	}
 }
 
+// Login godoc
+// @Summary      Login User
+// @Description  Masuk ke sistem untuk mendapatkan Token JWT
+// @Tags         Auth
+// @Accept       json
+// @Produce      json
+// @Param        request body models.LoginRequest true "Username & Password"
+// @Success      200  {object}  map[string]interface{}
+// @Failure      400  {object}  map[string]interface{}
+// @Failure      401  {object}  map[string]interface{}
+// @Router       /auth/login [post]
 func (s *authService) Login(c *fiber.Ctx) error {
 	var req models.LoginRequest
 
@@ -157,6 +168,16 @@ func (s *authService) Login(c *fiber.Ctx) error {
 	})
 }
 
+// GetProfile godoc
+// @Summary      Get User Profile
+// @Description  Melihat data diri user yang sedang login (Butuh Token)
+// @Tags         Auth
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200  {object}  models.User
+// @Failure      404  {object}  map[string]interface{}
+// @Router       /auth/profile [get]
 func (s *authService) GetProfile(c *fiber.Ctx) error {
 	// KOREKSI: Ambil sebagai uuid.UUID dulu, baru convert ke String
 	userID := c.Locals("user_id").(uuid.UUID).String()

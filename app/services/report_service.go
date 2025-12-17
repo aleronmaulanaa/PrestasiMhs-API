@@ -75,6 +75,14 @@ func NewReportService(repo repositories.ReportRepository, aRepo repositories.Ach
 	}
 }
 
+// GetDashboardStatistics godoc
+// @Summary      Dashboard Statistics
+// @Description  Melihat total user dan statistik prestasi (Admin Only)
+// @Tags         Reports (Admin)
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200  {object}  map[string]interface{}
+// @Router       /reports/statistics [get]
 func (s *reportService) GetDashboardStatistics(c *fiber.Ctx) error {
 	// 1. Hitung User
 	totalStudents, _ := s.repo.CountUsersByRole("Mahasiswa")
@@ -102,6 +110,16 @@ func (s *reportService) GetDashboardStatistics(c *fiber.Ctx) error {
 }
 
 // [NEW] Logic Transkrip Prestasi Mahasiswa
+
+// GetStudentReport godoc
+// @Summary      Student Transcript
+// @Description  Melihat laporan/transkrip prestasi lengkap mahasiswa
+// @Tags         Reports (Admin)
+// @Produce      json
+// @Security     BearerAuth
+// @Param        studentID  path  string  true  "ID Tabel Students (UUID)"
+// @Success      200  {object}  models.StudentReportResponse
+// @Router       /reports/student/{studentID} [get]
 func (s *reportService) GetStudentReport(c *fiber.Ctx) error {
 	targetStudentID := c.Params("studentID") // ID dari tabel students
 	_ = c.Locals("user_id").(uuid.UUID).String() // User yang request (bisa dipakai untuk validasi role)

@@ -180,6 +180,16 @@ func NewUserService(repo repositories.UserRepository) UserService {
 
 // --- Register Logic (Existing) ---
 
+// RegisterLecturer godoc
+// @Summary      Register Dosen
+// @Description  Mendaftarkan akun baru untuk Dosen (Admin Only)
+// @Tags         Users (Admin)
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        request body models.CreateLecturerRequest true "Data Dosen"
+// @Success      201  {object}  map[string]interface{}
+// @Router       /users/lecturers [post]
 func (s *userService) RegisterLecturer(c *fiber.Ctx) error {
 	var req models.CreateLecturerRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -208,6 +218,16 @@ func (s *userService) RegisterLecturer(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"status": "success", "message": "Dosen berhasil didaftarkan"})
 }
 
+// RegisterStudent godoc
+// @Summary      Register Mahasiswa
+// @Description  Mendaftarkan akun baru untuk Mahasiswa (Admin Only)
+// @Tags         Users (Admin)
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        request body models.CreateStudentRequest true "Data Mahasiswa"
+// @Success      201  {object}  map[string]interface{}
+// @Router       /users/students [post]
 func (s *userService) RegisterStudent(c *fiber.Ctx) error {
 	var req models.CreateStudentRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -239,6 +259,14 @@ func (s *userService) RegisterStudent(c *fiber.Ctx) error {
 
 // --- FASE 2: ADMIN MANAGEMENT ---
 
+// GetAllUsers godoc
+// @Summary      List All Users
+// @Description  Melihat semua user di sistem (Admin Only)
+// @Tags         Users (Admin)
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200  {array}   models.User
+// @Router       /users [get]
 func (s *userService) GetAllUsers(c *fiber.Ctx) error {
 	users, err := s.repo.FindAllUsers()
 	if err != nil {
@@ -248,6 +276,16 @@ func (s *userService) GetAllUsers(c *fiber.Ctx) error {
 }
 
 // [NEW] Get Detail User
+
+// GetUserByID godoc
+// @Summary      Get User Detail
+// @Description  Melihat detail user berdasarkan ID (Admin Only)
+// @Tags         Users (Admin)
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id   path      string  true  "User ID (UUID)"
+// @Success      200  {object}  models.User
+// @Router       /users/{id} [get]
 func (s *userService) GetUserByID(c *fiber.Ctx) error {
 	id := c.Params("id")
 	user, err := s.repo.FindUserByID(id)
@@ -258,6 +296,18 @@ func (s *userService) GetUserByID(c *fiber.Ctx) error {
 }
 
 // [NEW] Update User Info
+
+// UpdateUser godoc
+// @Summary      Update User Profile
+// @Description  Mengubah data dasar user (Admin Only)
+// @Tags         Users (Admin)
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id   path      string  true  "User ID"
+// @Param        body body      map[string]string true "Field: full_name, username, email"
+// @Success      200  {object}  map[string]interface{}
+// @Router       /users/{id} [put]
 func (s *userService) UpdateUser(c *fiber.Ctx) error {
 	id := c.Params("id")
 	type UpdateReq struct {
@@ -285,6 +335,18 @@ func (s *userService) UpdateUser(c *fiber.Ctx) error {
 }
 
 // [NEW] Change Password
+
+// ChangePassword godoc
+// @Summary      Reset Password User
+// @Description  Mengganti password user lain (Admin Only)
+// @Tags         Users (Admin)
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id   path      string  true  "User ID"
+// @Param        body body      map[string]string true "Field: password"
+// @Success      200  {object}  map[string]interface{}
+// @Router       /users/{id}/role [put]
 func (s *userService) ChangePassword(c *fiber.Ctx) error {
 	id := c.Params("id")
 	type PwdReq struct {
@@ -300,6 +362,15 @@ func (s *userService) ChangePassword(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"status": "success", "message": "Password updated"})
 }
 
+// DeleteUser godoc
+// @Summary      Delete User
+// @Description  Menghapus user dan profil terkait (Admin Only)
+// @Tags         Users (Admin)
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id   path      string  true  "User ID"
+// @Success      200  {object}  map[string]interface{}
+// @Router       /users/{id} [delete]
 func (s *userService) DeleteUser(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if err := s.repo.DeleteUser(id); err != nil {
@@ -308,6 +379,14 @@ func (s *userService) DeleteUser(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"status": "success", "message": "User berhasil dihapus"})
 }
 
+// GetAllStudents godoc
+// @Summary      List Students
+// @Description  Melihat daftar mahasiswa beserta dosen walinya
+// @Tags         Relations (Admin)
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200  {array}   models.StudentResponse
+// @Router       /students [get]
 func (s *userService) GetAllStudents(c *fiber.Ctx) error {
 	students, err := s.repo.GetAllStudents()
 	if err != nil {
@@ -316,6 +395,14 @@ func (s *userService) GetAllStudents(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"status": "success", "data": students})
 }
 
+// GetAllLecturers godoc
+// @Summary      List Lecturers
+// @Description  Melihat daftar dosen
+// @Tags         Relations (Admin)
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200  {array}   models.LecturerResponse
+// @Router       /lecturers [get]
 func (s *userService) GetAllLecturers(c *fiber.Ctx) error {
 	lecturers, err := s.repo.GetAllLecturers()
 	if err != nil {
@@ -324,6 +411,17 @@ func (s *userService) GetAllLecturers(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"status": "success", "data": lecturers})
 }
 
+// AssignAdvisor godoc
+// @Summary      Assign Dosen Wali
+// @Description  Menghubungkan mahasiswa dengan dosen wali
+// @Tags         Relations (Admin)
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id   path      string  true  "Student Table ID"
+// @Param        body body      models.AssignAdvisorRequest true "Advisor ID"
+// @Success      200  {object}  map[string]interface{}
+// @Router       /students/{id}/advisor [put]
 func (s *userService) AssignAdvisor(c *fiber.Ctx) error {
 	studentID := c.Params("id")
 	var req models.AssignAdvisorRequest

@@ -1,0 +1,921 @@
+basePath: /api/v1
+definitions:
+  models.AchievementDetails:
+    properties:
+      authors:
+        items:
+          type: string
+        type: array
+      certification_name:
+        description: '--- Certification (NEW - Sesuai SRS) ---'
+        type: string
+      certification_number:
+        type: string
+      competition_level:
+        type: string
+      competition_name:
+        description: '--- Competition ---'
+        type: string
+      custom_fields:
+        additionalProperties: true
+        description: |-
+          --- Dynamic Extension (NEW - Sesuai SRS) ---
+          Menampung field lain yang tidak terdefinisi (SRS: customFields?: Object)
+        type: object
+      end_date:
+        type: string
+      event_date:
+        description: '--- General ---'
+        type: string
+      issn:
+        type: string
+      issued_by:
+        type: string
+      location:
+        type: string
+      medal_type:
+        type: string
+      organization_name:
+        description: '--- Organization ---'
+        type: string
+      organizer:
+        type: string
+      position:
+        type: string
+      publication_title:
+        type: string
+      publication_type:
+        description: '--- Publication (NEW - Sesuai SRS) ---'
+        type: string
+      publisher:
+        type: string
+      rank:
+        type: integer
+      score:
+        description: NEW
+        type: number
+      start_date:
+        type: string
+      valid_until:
+        type: string
+    type: object
+  models.AchievementMongo:
+    properties:
+      achievement_type:
+        type: string
+      attachments:
+        items:
+          $ref: '#/definitions/models.Attachment'
+        type: array
+      created_at:
+        type: string
+      description:
+        type: string
+      details:
+        $ref: '#/definitions/models.AchievementDetails'
+      id:
+        type: string
+      points:
+        type: integer
+      student_id:
+        description: Disimpan sebagai string UUID
+        type: string
+      tags:
+        items:
+          type: string
+        type: array
+      title:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  models.AchievementReference:
+    properties:
+      created_at:
+        type: string
+      detail:
+        allOf:
+        - $ref: '#/definitions/models.AchievementMongo'
+        description: Field ini diisi setelah menggabungkan data dengan MongoDB di
+          Service layer
+      id:
+        description: UUID dari Postgres
+        type: string
+      mongo_achievement_id:
+        type: string
+      rejection_note:
+        type: string
+      status:
+        type: string
+      student_id:
+        type: string
+      submitted_at:
+        type: string
+      verified_at:
+        type: string
+    type: object
+  models.AchievementReportItem:
+    properties:
+      event_date:
+        description: Dari Mongo Details
+        type: string
+      status:
+        type: string
+      title:
+        type: string
+      type:
+        description: Kompetisi/Organisasi
+        type: string
+      verified_at:
+        type: string
+    type: object
+  models.AssignAdvisorRequest:
+    properties:
+      advisor_id:
+        description: ID tabel Lecturers
+        type: string
+    required:
+    - advisor_id
+    type: object
+  models.Attachment:
+    properties:
+      file_name:
+        type: string
+      file_type:
+        type: string
+      file_url:
+        type: string
+      uploaded_at:
+        type: string
+    type: object
+  models.CreateLecturerRequest:
+    properties:
+      department:
+        type: string
+      email:
+        type: string
+      full_name:
+        type: string
+      lecturer_id:
+        description: Data khusus tabel lecturers
+        type: string
+      password:
+        minLength: 6
+        type: string
+      username:
+        type: string
+    required:
+    - department
+    - email
+    - full_name
+    - lecturer_id
+    - password
+    - username
+    type: object
+  models.CreateStudentRequest:
+    properties:
+      academic_year:
+        type: string
+      advisor_id:
+        description: AdvisorID adalah ID dari Dosen Wali (UUID dari tabel lecturers)
+        type: string
+      email:
+        type: string
+      full_name:
+        type: string
+      password:
+        minLength: 6
+        type: string
+      program_study:
+        type: string
+      student_id:
+        description: Data khusus tabel students
+        type: string
+      username:
+        type: string
+    required:
+    - academic_year
+    - email
+    - full_name
+    - password
+    - program_study
+    - student_id
+    - username
+    type: object
+  models.LecturerResponse:
+    properties:
+      department:
+        type: string
+      full_name:
+        description: Dari tabel Users
+        type: string
+      id:
+        description: ID tabel Lecturers (UUID)
+        type: string
+      lecturer_id:
+        description: Dari tabel Lecturers
+        type: string
+    type: object
+  models.LoginRequest:
+    properties:
+      password:
+        type: string
+      username:
+        type: string
+    required:
+    - password
+    - username
+    type: object
+  models.ReportSummary:
+    properties:
+      total_entries:
+        type: integer
+      total_points:
+        description: 'Opsional: Jika nanti ada sistem poin SKP'
+        type: integer
+      total_verified:
+        type: integer
+    type: object
+  models.StudentHeader:
+    properties:
+      advisor_name:
+        type: string
+      full_name:
+        type: string
+      program_study:
+        type: string
+      student_id:
+        description: NIM
+        type: string
+    type: object
+  models.StudentReportResponse:
+    properties:
+      achievements:
+        items:
+          $ref: '#/definitions/models.AchievementReportItem'
+        type: array
+      student_info:
+        $ref: '#/definitions/models.StudentHeader'
+      summary:
+        $ref: '#/definitions/models.ReportSummary'
+    type: object
+  models.StudentResponse:
+    properties:
+      advisor_name:
+        description: Nama Dosen Wali
+        type: string
+      full_name:
+        description: Dari tabel Users
+        type: string
+      id:
+        description: ID tabel Students (UUID)
+        type: string
+      program_study:
+        type: string
+      student_id:
+        description: Dari tabel Students
+        type: string
+    type: object
+  models.User:
+    properties:
+      created_at:
+        type: string
+      email:
+        type: string
+      full_name:
+        type: string
+      id:
+        type: string
+      is_active:
+        type: boolean
+      role_id:
+        type: string
+      role_name:
+        description: Relasi (Optional, diisi jika join)
+        type: string
+      updated_at:
+        type: string
+      username:
+        type: string
+    type: object
+host: localhost:3000
+info:
+  contact:
+    email: support@prestasi.id
+    name: Tim Backend
+  description: API untuk sistem prestasi mahasiswa (PostgreSQL + MongoDB).
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+  termsOfService: http://swagger.io/terms/
+  title: Sistem Pelaporan Prestasi Mahasiswa API
+  version: "1.0"
+paths:
+  /achievements:
+    get:
+      description: Melihat seluruh prestasi yang masuk (Admin Only)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.AchievementReference'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: List ALL Prestasi (Admin)
+      tags:
+      - Achievements (Dosen & Admin)
+    post:
+      consumes:
+      - multipart/form-data
+      description: Mahasiswa mengupload data prestasi (Draft). File upload wajib via
+        form-data.
+      parameters:
+      - description: Judul Prestasi
+        in: formData
+        name: title
+        required: true
+        type: string
+      - description: 'Tipe: Kompetisi / Organisasi'
+        in: formData
+        name: achievement_type
+        required: true
+        type: string
+      - description: Deskripsi
+        in: formData
+        name: description
+        required: true
+        type: string
+      - description: Tanggal (YYYY-MM-DD)
+        in: formData
+        name: event_date
+        required: true
+        type: string
+      - description: Bukti Lampiran (PDF/IMG)
+        in: formData
+        name: file
+        type: file
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Upload Prestasi Baru
+      tags:
+      - Achievements (Mahasiswa)
+  /achievements/{id}:
+    delete:
+      description: Menghapus (Soft Delete) prestasi yang masih draft
+      parameters:
+      - description: Achievement Ref ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete Prestasi (Draft)
+      tags:
+      - Achievements (Mahasiswa)
+    get:
+      description: Melihat detail lengkap prestasi (termasuk data MongoDB)
+      parameters:
+      - description: Achievement Ref ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.AchievementReference'
+      security:
+      - BearerAuth: []
+      summary: Detail Prestasi
+      tags:
+      - Achievements (Common)
+    put:
+      consumes:
+      - multipart/form-data
+      description: Mengubah data prestasi (Hanya jika status Draft)
+      parameters:
+      - description: Achievement Ref ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Judul Prestasi
+        in: formData
+        name: title
+        required: true
+        type: string
+      - description: Deskripsi
+        in: formData
+        name: description
+        required: true
+        type: string
+      - description: Update File (Optional)
+        in: formData
+        name: file
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update Data Prestasi
+      tags:
+      - Achievements (Mahasiswa)
+  /achievements/{id}/history:
+    get:
+      description: Melihat jejak status (Draft -> Submitted -> Verified)
+      parameters:
+      - description: Achievement Ref ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+      security:
+      - BearerAuth: []
+      summary: History Prestasi
+      tags:
+      - Achievements (Common)
+  /achievements/{id}/reject:
+    post:
+      consumes:
+      - application/json
+      description: Menolak prestasi dengan catatan (Status -> Rejected)
+      parameters:
+      - description: Achievement Ref ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 'Field: notes'
+        in: body
+        name: body
+        required: true
+        schema:
+          additionalProperties:
+            type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Reject Prestasi
+      tags:
+      - Achievements (Dosen & Admin)
+  /achievements/{id}/submit:
+    post:
+      description: Mengubah status Draft menjadi Submitted (Siap Diverifikasi)
+      parameters:
+      - description: Achievement Ref ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Submit Prestasi
+      tags:
+      - Achievements (Mahasiswa)
+  /achievements/{id}/verify:
+    post:
+      description: Menyetujui prestasi (Status -> Verified)
+      parameters:
+      - description: Achievement Ref ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Verify Prestasi
+      tags:
+      - Achievements (Dosen & Admin)
+  /achievements/advisees:
+    get:
+      description: Melihat daftar prestasi mahasiswa bimbingan (Dosen Wali Only)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.AchievementReference'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: List Prestasi Bimbingan
+      tags:
+      - Achievements (Dosen & Admin)
+  /achievements/my:
+    get:
+      description: Melihat daftar prestasi milik mahasiswa yang sedang login
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.AchievementReference'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: List Prestasi Saya
+      tags:
+      - Achievements (Mahasiswa)
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Masuk ke sistem untuk mendapatkan Token JWT
+      parameters:
+      - description: Username & Password
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Login User
+      tags:
+      - Auth
+  /auth/profile:
+    get:
+      consumes:
+      - application/json
+      description: Melihat data diri user yang sedang login (Butuh Token)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.User'
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get User Profile
+      tags:
+      - Auth
+  /lecturers:
+    get:
+      description: Melihat daftar dosen
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.LecturerResponse'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: List Lecturers
+      tags:
+      - Relations (Admin)
+  /reports/statistics:
+    get:
+      description: Melihat total user dan statistik prestasi (Admin Only)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Dashboard Statistics
+      tags:
+      - Reports (Admin)
+  /reports/student/{studentID}:
+    get:
+      description: Melihat laporan/transkrip prestasi lengkap mahasiswa
+      parameters:
+      - description: ID Tabel Students (UUID)
+        in: path
+        name: studentID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.StudentReportResponse'
+      security:
+      - BearerAuth: []
+      summary: Student Transcript
+      tags:
+      - Reports (Admin)
+  /students:
+    get:
+      description: Melihat daftar mahasiswa beserta dosen walinya
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.StudentResponse'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: List Students
+      tags:
+      - Relations (Admin)
+  /students/{id}/advisor:
+    put:
+      consumes:
+      - application/json
+      description: Menghubungkan mahasiswa dengan dosen wali
+      parameters:
+      - description: Student Table ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Advisor ID
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.AssignAdvisorRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Assign Dosen Wali
+      tags:
+      - Relations (Admin)
+  /users:
+    get:
+      description: Melihat semua user di sistem (Admin Only)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.User'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: List All Users
+      tags:
+      - Users (Admin)
+  /users/{id}:
+    delete:
+      description: Menghapus user dan profil terkait (Admin Only)
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete User
+      tags:
+      - Users (Admin)
+    get:
+      description: Melihat detail user berdasarkan ID (Admin Only)
+      parameters:
+      - description: User ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.User'
+      security:
+      - BearerAuth: []
+      summary: Get User Detail
+      tags:
+      - Users (Admin)
+    put:
+      consumes:
+      - application/json
+      description: Mengubah data dasar user (Admin Only)
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 'Field: full_name, username, email'
+        in: body
+        name: body
+        required: true
+        schema:
+          additionalProperties:
+            type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update User Profile
+      tags:
+      - Users (Admin)
+  /users/{id}/role:
+    put:
+      consumes:
+      - application/json
+      description: Mengganti password user lain (Admin Only)
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 'Field: password'
+        in: body
+        name: body
+        required: true
+        schema:
+          additionalProperties:
+            type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Reset Password User
+      tags:
+      - Users (Admin)
+  /users/lecturers:
+    post:
+      consumes:
+      - application/json
+      description: Mendaftarkan akun baru untuk Dosen (Admin Only)
+      parameters:
+      - description: Data Dosen
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateLecturerRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Register Dosen
+      tags:
+      - Users (Admin)
+  /users/students:
+    post:
+      consumes:
+      - application/json
+      description: Mendaftarkan akun baru untuk Mahasiswa (Admin Only)
+      parameters:
+      - description: Data Mahasiswa
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateStudentRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Register Mahasiswa
+      tags:
+      - Users (Admin)
+securityDefinitions:
+  BearerAuth:
+    description: 'Masukkan token dengan format: Bearer <token_jwt_anda>'
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"
