@@ -132,7 +132,6 @@ definitions:
   models.AssignAdvisorRequest:
     properties:
       advisor_id:
-        description: ID tabel Lecturers
         type: string
     required:
     - advisor_id
@@ -157,7 +156,7 @@ definitions:
       full_name:
         type: string
       lecturer_id:
-        description: Data khusus tabel lecturers
+        description: NIP
         type: string
       password:
         minLength: 6
@@ -177,7 +176,7 @@ definitions:
       academic_year:
         type: string
       advisor_id:
-        description: AdvisorID adalah ID dari Dosen Wali (UUID dari tabel lecturers)
+        description: UUID Dosen Wali
         type: string
       email:
         type: string
@@ -189,12 +188,13 @@ definitions:
       program_study:
         type: string
       student_id:
-        description: Data khusus tabel students
+        description: NIM
         type: string
       username:
         type: string
     required:
     - academic_year
+    - advisor_id
     - email
     - full_name
     - password
@@ -207,13 +207,13 @@ definitions:
       department:
         type: string
       full_name:
-        description: Dari tabel Users
+        description: Nama User
         type: string
       id:
-        description: ID tabel Lecturers (UUID)
+        description: ID Tabel Lecturers
         type: string
       lecturer_id:
-        description: Dari tabel Lecturers
+        description: NIP
         type: string
     type: object
   models.LoginRequest:
@@ -264,16 +264,20 @@ definitions:
       advisor_name:
         description: Nama Dosen Wali
         type: string
+      email:
+        description: Email User
+        type: string
       full_name:
-        description: Dari tabel Users
+        description: Nama User
         type: string
       id:
-        description: ID tabel Students (UUID)
+        description: ID Tabel Students
         type: string
       program_study:
+        description: Prodi
         type: string
       student_id:
-        description: Dari tabel Students
+        description: NIM
         type: string
     type: object
   models.User:
@@ -291,7 +295,7 @@ definitions:
       role_id:
         type: string
       role_name:
-        description: Relasi (Optional, diisi jika join)
+        description: Field Relasi (Optional)
         type: string
       updated_at:
         type: string
@@ -588,7 +592,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: Masuk ke sistem untuk mendapatkan Token JWT
+      description: Masuk ke sistem untuk mendapatkan Token JWT dan Refresh Token
       parameters:
       - description: Username & Password
         in: body
@@ -656,6 +660,29 @@ paths:
       summary: List Lecturers
       tags:
       - Relations (Admin)
+  /lecturers/{id}/advisees:
+    get:
+      description: Melihat daftar mahasiswa bimbingan dosen tertentu
+      parameters:
+      - description: Lecturer Table ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.StudentResponse'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: Get Lecturer Advisees
+      tags:
+      - Students & Lecturers
   /reports/statistics:
     get:
       description: Melihat total user dan statistik prestasi (Admin Only)
@@ -710,6 +737,51 @@ paths:
       summary: List Students
       tags:
       - Relations (Admin)
+  /students/{id}:
+    get:
+      description: Melihat detail mahasiswa (Profil Akademik)
+      parameters:
+      - description: Student Table ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get Student Detail
+      tags:
+      - Students & Lecturers
+  /students/{id}/achievements:
+    get:
+      description: Melihat list prestasi berdasarkan ID Mahasiswa (Tabel Students)
+      parameters:
+      - description: Student Table ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.AchievementReference'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: Get Student Achievements (Public/Admin)
+      tags:
+      - Students & Lecturers
   /students/{id}/advisor:
     put:
       consumes:

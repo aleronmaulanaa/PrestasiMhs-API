@@ -4,11 +4,13 @@
 // 	"PrestasiMhs-API/app/models"
 // 	"PrestasiMhs-API/app/repositories"
 // 	"PrestasiMhs-API/utils"
-// 	"github.com/gofiber/fiber/v2" // Service sekarang butuh Fiber karena menghandle Context
+// 	"github.com/gofiber/fiber/v2"
+// 	"github.com/google/uuid"
 // )
 
 // type AuthService interface {
-// 	Login(c *fiber.Ctx) error // Parameter berubah menjadi fiber.Ctx
+// 	Login(c *fiber.Ctx) error
+// 	GetProfile(c *fiber.Ctx) error // [NEW]
 // }
 
 // type authService struct {
@@ -21,7 +23,17 @@
 // 	}
 // }
 
-// // Login sekarang menangani Parsing Data DAN Logic sekaligus
+// // Login godoc
+// // @Summary      Login User
+// // @Description  Masuk ke sistem untuk mendapatkan Token JWT
+// // @Tags         Auth
+// // @Accept       json
+// // @Produce      json
+// // @Param        request body models.LoginRequest true "Username & Password"
+// // @Success      200  {object}  map[string]interface{}
+// // @Failure      400  {object}  map[string]interface{}
+// // @Failure      401  {object}  map[string]interface{}
+// // @Router       /auth/login [post]
 // func (s *authService) Login(c *fiber.Ctx) error {
 // 	var req models.LoginRequest
 
@@ -59,25 +71,48 @@
 // 		})
 // 	}
 
-// 	// 5. Susun Response menggunakan Struct (BEST PRACTICE)
-// 	// Kita inisialisasi struct LoginResponse di sini
+// 	// 5. Susun Response menggunakan Struct
 // 	response := models.LoginResponse{
 // 		Token: token,
 // 	}
-	
-// 	// Isi data user
 // 	response.User.ID = user.ID
 // 	response.User.Username = user.Username
 // 	response.User.FullName = user.FullName
 // 	response.User.Role = user.RoleName
 
-// 	// 6. Return JSON
 // 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 // 		"status":  "success",
 // 		"message": "Login berhasil",
-// 		"data":    response, // Menggunakan struct, bukan map manual
+// 		"data":    response,
 // 	})
 // }
+
+// // GetProfile godoc
+// // @Summary      Get User Profile
+// // @Description  Melihat data diri user yang sedang login (Butuh Token)
+// // @Tags         Auth
+// // @Accept       json
+// // @Produce      json
+// // @Security     BearerAuth
+// // @Success      200  {object}  models.User
+// // @Failure      404  {object}  map[string]interface{}
+// // @Router       /auth/profile [get]
+// func (s *authService) GetProfile(c *fiber.Ctx) error {
+// 	// KOREKSI: Ambil sebagai uuid.UUID dulu, baru convert ke String
+// 	userID := c.Locals("user_id").(uuid.UUID).String()
+
+// 	// Panggil Repository (pastikan Anda sudah update auth_repository.go di langkah sebelumnya)
+// 	user, err := s.repo.GetUserDetail(userID)
+// 	if err != nil {
+// 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"status": "error", "message": "User tidak ditemukan"})
+// 	}
+
+// 	return c.JSON(fiber.Map{
+// 		"status": "success",
+// 		"data":   user,
+// 	})
+// }
+
 
 package services
 
@@ -91,7 +126,7 @@ import (
 
 type AuthService interface {
 	Login(c *fiber.Ctx) error
-	GetProfile(c *fiber.Ctx) error // [NEW]
+	GetProfile(c *fiber.Ctx) error
 }
 
 type authService struct {
@@ -106,7 +141,7 @@ func NewAuthService(repo repositories.AuthRepository) AuthService {
 
 // Login godoc
 // @Summary      Login User
-// @Description  Masuk ke sistem untuk mendapatkan Token JWT
+// @Description  Masuk ke sistem untuk mendapatkan Token JWT dan Refresh Token
 // @Tags         Auth
 // @Accept       json
 // @Produce      json
@@ -143,7 +178,7 @@ func (s *authService) Login(c *fiber.Ctx) error {
 		})
 	}
 
-	// 4. Logic Layer: Generate Token
+	// 4. Logic Layer: Generate Access Token
 	token, err := utils.GenerateToken(user.ID, user.RoleName)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -152,9 +187,15 @@ func (s *authService) Login(c *fiber.Ctx) error {
 		})
 	}
 
-	// 5. Susun Response menggunakan Struct
+	// [NEW] 5. Generate Refresh Token (Simulasi)
+	// Kita membuat token kedua sebagai refresh token. 
+	// Dalam implementasi nyata, ini bisa punya expiry time yang lebih lama.
+	refreshToken, _ := utils.GenerateToken(user.ID, "refresh_token")
+
+	// 6. Susun Response menggunakan Struct
 	response := models.LoginResponse{
-		Token: token,
+		Token:        token,
+		TokenRefresh: refreshToken, // [NEW] Field ini sekarang terisi
 	}
 	response.User.ID = user.ID
 	response.User.Username = user.Username
@@ -182,7 +223,7 @@ func (s *authService) GetProfile(c *fiber.Ctx) error {
 	// KOREKSI: Ambil sebagai uuid.UUID dulu, baru convert ke String
 	userID := c.Locals("user_id").(uuid.UUID).String()
 
-	// Panggil Repository (pastikan Anda sudah update auth_repository.go di langkah sebelumnya)
+	// Panggil Repository
 	user, err := s.repo.GetUserDetail(userID)
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"status": "error", "message": "User tidak ditemukan"})

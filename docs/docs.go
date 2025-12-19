@@ -453,7 +453,7 @@ const docTemplate = `{
         },
         "/auth/login": {
             "post": {
-                "description": "Masuk ke sistem untuk mendapatkan Token JWT",
+                "description": "Masuk ke sistem untuk mendapatkan Token JWT dan Refresh Token",
                 "consumes": [
                     "application/json"
                 ],
@@ -563,6 +563,43 @@ const docTemplate = `{
                 }
             }
         },
+        "/lecturers/{id}/advisees": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Melihat daftar mahasiswa bimbingan dosen tertentu",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Students \u0026 Lecturers"
+                ],
+                "summary": "Get Lecturer Advisees",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Lecturer Table ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.StudentResponse"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/reports/statistics": {
             "get": {
                 "security": [
@@ -645,6 +682,78 @@ const docTemplate = `{
                             "type": "array",
                             "items": {
                                 "$ref": "#/definitions/models.StudentResponse"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/students/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Melihat detail mahasiswa (Profil Akademik)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Students \u0026 Lecturers"
+                ],
+                "summary": "Get Student Detail",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Student Table ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/students/{id}/achievements": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Melihat list prestasi berdasarkan ID Mahasiswa (Tabel Students)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Students \u0026 Lecturers"
+                ],
+                "summary": "Get Student Achievements (Public/Admin)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Student Table ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.AchievementReference"
                             }
                         }
                     }
@@ -1167,7 +1276,6 @@ const docTemplate = `{
             ],
             "properties": {
                 "advisor_id": {
-                    "description": "ID tabel Lecturers",
                     "type": "string"
                 }
             }
@@ -1210,7 +1318,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "lecturer_id": {
-                    "description": "Data khusus tabel lecturers",
+                    "description": "NIP",
                     "type": "string"
                 },
                 "password": {
@@ -1226,6 +1334,7 @@ const docTemplate = `{
             "type": "object",
             "required": [
                 "academic_year",
+                "advisor_id",
                 "email",
                 "full_name",
                 "password",
@@ -1238,7 +1347,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "advisor_id": {
-                    "description": "AdvisorID adalah ID dari Dosen Wali (UUID dari tabel lecturers)",
+                    "description": "UUID Dosen Wali",
                     "type": "string"
                 },
                 "email": {
@@ -1255,7 +1364,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "student_id": {
-                    "description": "Data khusus tabel students",
+                    "description": "NIM",
                     "type": "string"
                 },
                 "username": {
@@ -1270,15 +1379,15 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "full_name": {
-                    "description": "Dari tabel Users",
+                    "description": "Nama User",
                     "type": "string"
                 },
                 "id": {
-                    "description": "ID tabel Lecturers (UUID)",
+                    "description": "ID Tabel Lecturers",
                     "type": "string"
                 },
                 "lecturer_id": {
-                    "description": "Dari tabel Lecturers",
+                    "description": "NIP",
                     "type": "string"
                 }
             }
@@ -1355,19 +1464,24 @@ const docTemplate = `{
                     "description": "Nama Dosen Wali",
                     "type": "string"
                 },
+                "email": {
+                    "description": "Email User",
+                    "type": "string"
+                },
                 "full_name": {
-                    "description": "Dari tabel Users",
+                    "description": "Nama User",
                     "type": "string"
                 },
                 "id": {
-                    "description": "ID tabel Students (UUID)",
+                    "description": "ID Tabel Students",
                     "type": "string"
                 },
                 "program_study": {
+                    "description": "Prodi",
                     "type": "string"
                 },
                 "student_id": {
-                    "description": "Dari tabel Students",
+                    "description": "NIM",
                     "type": "string"
                 }
             }
@@ -1394,7 +1508,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "role_name": {
-                    "description": "Relasi (Optional, diisi jika join)",
+                    "description": "Field Relasi (Optional)",
                     "type": "string"
                 },
                 "updated_at": {

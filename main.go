@@ -153,6 +153,9 @@ func main() {
 		BodyLimit: 10 * 1024 * 1024,
 	})
 
+	// [NEW] STATIC SERVING (Agar file upload bisa dibuka di browser)
+    app.Static("/uploads", "./uploads")
+
 	// 4. Middlewares Global
 	app.Use(logger.New()) // Logging request
 	app.Use(cors.New())   // Handle CORS

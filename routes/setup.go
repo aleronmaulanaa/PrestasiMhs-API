@@ -5,6 +5,9 @@
 // 	"PrestasiMhs-API/app/services"
 // 	"PrestasiMhs-API/middleware"
 // 	"github.com/gofiber/fiber/v2"
+
+// 	// [PENTING] Import ini wajib ada agar route swagger dikenali
+// 	"github.com/gofiber/swagger"
 // )
 
 // func SetupRoutes(app *fiber.App) {
@@ -24,9 +27,9 @@
 // 	achievementRepo := repositories.NewAchievementRepository()
 // 	achievementService := services.NewAchievementService(achievementRepo)
 
-// 	// [NEW FASE 3] Reporting
+// 	// Reporting
 // 	reportRepo := repositories.NewReportRepository()
-// 	// [UPDATE] Inject achievementRepo juga agar Service bisa akses Mongo
+// 	// Inject achievementRepo juga agar Service bisa akses Mongo untuk detail laporan
 // 	reportService := services.NewReportService(reportRepo, achievementRepo)
 
 // 	// ============================================
@@ -49,12 +52,23 @@
 // 	users.Post("/students", userService.RegisterStudent)
 
 // 	// --- Relations Management ---
+	
+// 	// Group Students
 // 	students := api.Group("/students", middleware.Protected(), middleware.RoleMiddleware("Admin"))
 // 	students.Get("/", userService.GetAllStudents)
 // 	students.Put("/:id/advisor", userService.AssignAdvisor)
+	
+// 	// [NEW] Endpoint Tambahan Sesuai SRS & Request
+// 	students.Get("/:id", userService.GetStudentByID) 
+// 	// Endpoint ini menggunakan AchievementService karena butuh akses DB Prestasi
+// 	students.Get("/:id/achievements", achievementService.GetAchievementsByStudentID) 
 
+// 	// Group Lecturers
 // 	lecturers := api.Group("/lecturers", middleware.Protected(), middleware.RoleMiddleware("Admin"))
 // 	lecturers.Get("/", userService.GetAllLecturers)
+	
+// 	// [NEW] Endpoint Tambahan Sesuai SRS & Request
+// 	lecturers.Get("/:id/advisees", userService.GetLecturerAdviseesSRS)
 
 // 	// --- B. Achievement Routes ---
 // 	achievements := api.Group("/achievements", middleware.Protected())
@@ -62,12 +76,12 @@
 // 	// Admin View All
 // 	achievements.Get("/", middleware.RoleMiddleware("Admin"), achievementService.GetAllAchievements)
 
-// 	// Static
+// 	// Static Routes
 // 	achievements.Post("/", middleware.RoleMiddleware("Mahasiswa"), achievementService.CreateAchievement)
 // 	achievements.Get("/my", middleware.RoleMiddleware("Mahasiswa"), achievementService.GetMyAchievements)
 // 	achievements.Get("/advisees", middleware.RoleMiddleware("Dosen Wali"), achievementService.GetAdviseeAchievements)
 
-// 	// Dynamic
+// 	// Dynamic Routes (/:id)
 // 	achievements.Get("/:id", achievementService.GetAchievementByID)
 // 	achievements.Get("/:id/history", achievementService.GetAchievementHistory)
 // 	achievements.Put("/:id", middleware.RoleMiddleware("Mahasiswa"), achievementService.UpdateAchievement)
@@ -76,15 +90,19 @@
 // 	achievements.Post("/:id/verify", middleware.RoleMiddleware("Dosen Wali"), achievementService.VerifyAchievement)
 // 	achievements.Post("/:id/reject", middleware.RoleMiddleware("Dosen Wali"), achievementService.RejectAchievement)
 
-// 	// --- [NEW FASE 3] Report Routes ---
+// 	// --- Report Routes ---
 // 	reports := api.Group("/reports", middleware.Protected())
 
 // 	// Dashboard Statistics
 // 	reports.Get("/statistics", middleware.RoleMiddleware("Admin"), reportService.GetDashboardStatistics)
 	
-// 	// [NEW] Student Report (Transkrip)
-// 	// Admin & Dosen Wali boleh lihat
+// 	// Student Report (Transkrip)
 // 	reports.Get("/student/:studentID", middleware.RoleMiddleware("Admin", "Dosen Wali"), reportService.GetStudentReport)
+
+// 	// ============================================
+// 	// 3. DOCUMENTATION ROUTE (SWAGGER)
+// 	// ============================================
+// 	app.Get("/swagger/*", swagger.HandlerDefault)
 // }
 
 
@@ -142,12 +160,29 @@ func SetupRoutes(app *fiber.App) {
 	users.Post("/students", userService.RegisterStudent)
 
 	// --- Relations Management ---
-	students := api.Group("/students", middleware.Protected(), middleware.RoleMiddleware("Admin"))
-	students.Get("/", userService.GetAllStudents)
-	students.Put("/:id/advisor", userService.AssignAdvisor)
+	
+	// Group Students
+	// [PERBAIKAN] Hapus "Admin" dari sini agar Mahasiswa bisa masuk
+	students := api.Group("/students", middleware.Protected())
 
-	lecturers := api.Group("/lecturers", middleware.Protected(), middleware.RoleMiddleware("Admin"))
-	lecturers.Get("/", userService.GetAllLecturers)
+	// Endpoint Khusus Admin
+	students.Get("/", middleware.RoleMiddleware("Admin"), userService.GetAllStudents)
+	students.Put("/:id/advisor", middleware.RoleMiddleware("Admin"), userService.AssignAdvisor)
+	
+	// Endpoint Umum (Admin, Dosen, Mahasiswa bisa akses)
+	// Mahasiswa butuh akses ini untuk melihat detail dirinya sendiri
+	students.Get("/:id", middleware.RoleMiddleware("Admin", "Dosen Wali", "Mahasiswa"), userService.GetStudentByID) 
+	students.Get("/:id/achievements", middleware.RoleMiddleware("Admin", "Dosen Wali", "Mahasiswa"), achievementService.GetAchievementsByStudentID) 
+
+	// Group Lecturers
+	// [PERBAIKAN] Hapus "Admin" dari sini agar Dosen bisa masuk
+	lecturers := api.Group("/lecturers", middleware.Protected())
+	
+	// Endpoint Khusus Admin
+	lecturers.Get("/", middleware.RoleMiddleware("Admin"), userService.GetAllLecturers)
+	
+	// Endpoint Admin & Dosen Wali
+	lecturers.Get("/:id/advisees", middleware.RoleMiddleware("Admin", "Dosen Wali"), userService.GetLecturerAdviseesSRS)
 
 	// --- B. Achievement Routes ---
 	achievements := api.Group("/achievements", middleware.Protected())
@@ -181,6 +216,5 @@ func SetupRoutes(app *fiber.App) {
 	// ============================================
 	// 3. DOCUMENTATION ROUTE (SWAGGER)
 	// ============================================
-	// Route ini yang sebelumnya hilang, menyebabkan 404
 	app.Get("/swagger/*", swagger.HandlerDefault)
 }
